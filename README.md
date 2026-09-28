@@ -38,6 +38,7 @@ The browser never calls OpenAI or receives the API key. The sole paid image requ
 | `tests/redis-guards.integration.test.ts` | Runs the production Lua guards against an isolated real Redis 7 container. |
 | `.github/workflows/ci.yml` | Typecheck, tests, isolated Redis guard integration, and production build on GitHub pushes and pull requests. |
 | `demo/index.html`, `demo/*.png` | Offline fictional kitchen before/after comparison for product and engineering review. No API calls or credentials. |
+| `scripts/paid-smoke.ts` | Explicit one-attempt provider smoke test using the fictional kitchen photo. It does not exercise the public API guards. |
 
 ### Offline visual demo
 
@@ -84,6 +85,16 @@ docker run -d --name kanabco-redis-test redis:7-alpine redis-server --save '' --
 KANABCO_REDIS_TEST_CONTAINER=kanabco-redis-test node --import tsx --test tests/redis-guards.integration.test.ts
 docker rm -f kanabco-redis-test
 ```
+
+### One paid provider smoke test
+
+After the owner creates a dedicated OpenAI Project, enables its affordable **hard** spend limit, and places its project key in the gitignored `.env.local` as `OPENAI_API_KEY`, run this command from the package directory **once**:
+
+```sh
+PAID_SMOKE_CONFIRM=one-generation node --import tsx scripts/paid-smoke.ts
+```
+
+The script moderates the fictional `demo/kitchen-before.png`, then makes at most one Images Edit call with fixed kitchen settings. It prints only usage and an approximate cost, and saves the normalized result to the gitignored `work/local-test/paid-kitchen-concept.jpg`. A one-shot lock prevents an accidental repeat; if it stops after the edit begins, check OpenAI project usage before deciding whether to retry. This direct provider test does **not** prove Turnstile, Cloudflare, Redis, the browser upload, or the public route are configured; those remain staging integration checks. Keep `AI_FEATURE_ENABLED=false` for the public route throughout this smoke test.
 
 ## Environment variables
 
