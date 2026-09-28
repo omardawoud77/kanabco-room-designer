@@ -50,6 +50,8 @@ Open `demo/index.html` in a browser and drag the comparison control. The compari
 
 The browser sends exactly one multipart upload and these fields: `{ image, projectType, productId?, style, color, material, roomWidthCm?, turnstileToken }`. `projectType` is one of `sofa`, `bed`, `wardrobe`, `dresser`, `dressing-room`, `kitchen`. `productId` is optional and valid only with `sofa`; omitting it asks for a new sofa concept from the controlled design choices. Styles, colors, and materials are fixed server-side enums. The visitor cannot provide a free-text prompt, model, URL, additional file, or OpenAI parameters.
 
+The browser decodes a selected photo and checks its size, pixel count, and aspect ratio before enabling submit, so an obviously invalid image does not consume a Turnstile token or request quota. These checks are only for feedback; the server independently verifies the file signature, dimensions, and decoded pixels at gate 9.
+
 The response describes a `project` with `type`, `label`, `source` (`custom-concept` or `catalog-reference`), nullable product fields, `priceEgp: null`, and a specialist quote note. The image and disclaimer accompany it. A concept-only category has no product identity. The UI must never label a bed, wardrobe, dresser, dressing room, or kitchen concept as an available Kanabco product or confirmed Kanabco service. A specialist can discuss whether the idea is feasible and quote it after review.
 
 ### Exact API gate order

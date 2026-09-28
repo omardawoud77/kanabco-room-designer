@@ -77,6 +77,7 @@ const COLORS: { id: ConceptColor; name: string }[] = [
 ];
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const MAX_IMAGE_PIXELS = 12_000_000;
 const ACCEPTED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const WAIT_LIMIT_MS = 250_000;
 
@@ -182,6 +183,7 @@ export default function Home() {
   const [submitError, setSubmitError] = useState("");
   const [result, setResult] = useState<DesignResult | null>(null);
   const resultRef = useRef<HTMLElement>(null);
+  const photoSelectionId = useRef(0);
 
   useEffect(() => {
     let active = true;
@@ -249,32 +251,60 @@ export default function Home() {
   const validWidth = !roomWidthCm || (/^\d{3,4}$/.test(roomWidthCm) && Number(roomWidthCm) >= 180 && Number(roomWidthCm) <= 1000);
   const canSubmit = !!photo && !!turnstileToken && validWidth && !submitting && !setupError;
 
-  function choosePhoto(file?: File) {
+  async function choosePhoto(file?: File) {
+    if (submitting) return;
+    const selectionId = ++photoSelectionId.current;
     setSubmitError("");
     setResult(null);
+    setPhoto(null);
+    setPhotoError("");
     if (!file) return;
     if (!ACCEPTED_TYPES.has(file.type)) {
-      setPhoto(null);
       setPhotoError("Choose a JPG, PNG, or WebP photo.");
       return;
     }
     if (file.size > MAX_IMAGE_BYTES) {
-      setPhoto(null);
       setPhotoError("Choose a photo smaller than 8 MB.");
       return;
     }
-    setPhotoError("");
-    setPhoto(file);
+    if (file.size < 1000) {
+      setPhotoError("Choose a clear JPG, PNG, or WebP photo at least 320 × 320 pixels.");
+      return;
+    }
+    try {
+      const bitmap = await createImageBitmap(file);
+      const { width, height } = bitmap;
+      bitmap.close();
+      if (selectionId !== photoSelectionId.current) return;
+      if (width < 320 || height < 320) {
+        setPhotoError("This photo is too small. Choose one at least 320 × 320 pixels.");
+        return;
+      }
+      if (width * height > MAX_IMAGE_PIXELS) {
+        setPhotoError("This photo has too many pixels. Choose one under 12 megapixels.");
+        return;
+      }
+      if (Math.max(width, height) > 3 * Math.min(width, height)) {
+        setPhotoError("Choose a room photo that is less panoramic.");
+        return;
+      }
+      setPhotoError("");
+      setPhoto(file);
+    } catch {
+      if (selectionId === photoSelectionId.current) {
+        setPhotoError("This photo could not be read. Choose a clear JPG, PNG, or WebP photo.");
+      }
+    }
   }
 
   function onPhotoChange(event: ChangeEvent<HTMLInputElement>) {
-    choosePhoto(event.target.files?.[0]);
+    void choosePhoto(event.target.files?.[0]);
     event.target.value = "";
   }
 
   function onPhotoDrop(event: DragEvent<HTMLLabelElement>) {
     event.preventDefault();
-    choosePhoto(event.dataTransfer.files?.[0]);
+    void choosePhoto(event.dataTransfer.files?.[0]);
   }
 
   function chooseProject(id: ProjectType) {
@@ -420,7 +450,7 @@ export default function Home() {
                 {photoUrl ? (
                   <><img src={photoUrl} alt="Preview of your uploaded room" /><span className="upload-change">Change photo</span></>
                 ) : (
-                  <><span className="upload-icon"><Icon kind="upload" /></span><strong>Drop a photo here, or choose a file</strong><small>JPG, PNG or WebP · Up to 8 MB</small></>
+                  <><span className="upload-icon"><Icon kind="upload" /></span><strong>Drop a photo here, or choose a file</strong><small>JPG, PNG or WebP · 320 px minimum · Up to 8 MB</small></>
                 )}
               </label>
               <p id="photo-help" className="microcopy">We send your photo to OpenAI to create one concept. Avoid showing people or private information.</p>
