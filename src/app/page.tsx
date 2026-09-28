@@ -99,7 +99,8 @@ function responseError(status: number) {
   if (status === 413) return "This photo is too large. Choose an image under 8 MB.";
   if (status === 429) return "The design studio is busy or your free limit has been reached. Please try again later.";
   if (status === 503) return "The design studio is temporarily unavailable. Please try again later.";
-  if (status === 400 || status === 403) return "We could not verify this request. Complete the security check again and retry.";
+  if (status === 400) return "Please check your photo and selections. If the photo keeps failing, export it as a clear JPG, PNG, or WebP and try again.";
+  if (status === 403) return "We could not verify this request. Complete the security check again and retry.";
   return "Your design could not be created right now. Please try again later.";
 }
 
@@ -308,9 +309,11 @@ export default function Home() {
   }
 
   function chooseProject(id: ProjectType) {
+    if (submitting) return;
     setProjectType(id);
     setProductId("");
     setMaterial(PROJECT_TYPES.find((item) => item.id === id)?.defaultMaterial ?? ALLOWED_MATERIALS[id][0]);
+    setSubmitError("");
     setResult(null);
   }
 
@@ -320,7 +323,9 @@ export default function Home() {
   }
 
   function chooseProduct(id: string) {
+    if (submitting) return;
     setProductId(id);
+    setSubmitError("");
     setResult(null);
   }
 
@@ -418,7 +423,7 @@ export default function Home() {
         </div>
         <div className="category-grid">
           {CATEGORY_CARDS.map((item) => (
-            <button key={item.id} className={`category-card ${projectType === item.id ? "category-selected" : ""}`} type="button" onClick={() => chooseCategory(item.id)} aria-label={`Explore ${item.label}`}>
+            <button key={item.id} className={`category-card ${projectType === item.id ? "category-selected" : ""}`} type="button" onClick={() => chooseCategory(item.id)} aria-label={`Explore ${item.label}`} disabled={submitting}>
               <span className={`category-image category-${item.id}`}><img src={item.image} alt="" loading="lazy" /></span>
               <span className="category-body">
                 <span className="category-meta">{item.catalog ? "KANABCO SOFA REFERENCE AVAILABLE" : "EXPLORATORY CONCEPT"}</span>

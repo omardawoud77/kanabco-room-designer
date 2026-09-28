@@ -8,7 +8,7 @@ import { ConfigurationError, publicConfig, serverConfig } from "../src/lib/confi
 import { billableUsageKnown, estimatedCostCents } from "../src/lib/openai-image";
 import { buildRoomPrompt } from "../src/lib/prompt";
 import { findProduct } from "../src/lib/catalog";
-import { verifyTurnstile } from "../src/lib/turnstile";
+import { mintLocalTurnstileToken, verifyTurnstile } from "../src/lib/turnstile";
 
 const URL = "https://kanabco.net/api/room-design";
 const BASE_HEADERS = {
@@ -140,14 +140,23 @@ test("Cloudflare dummy response works only in explicit loopback development mode
   process.env.TURNSTILE_EXPECTED_HOSTNAME = "127.0.0.1";
   const config = serverConfig();
   assert.equal(publicConfig(config).localTestMode, true);
-  globalThis.fetch = async () => new Response(JSON.stringify({ success: true, hostname: "example.com", metadata: { result_with_testing_key: true } }), { status: 200 });
+  const destinations: string[] = [];
+  globalThis.fetch = async (input, init) => {
+    destinations.push(String(input));
+    assert.equal((JSON.parse(String(init?.body)) as { response: string }).response, "XXXX.DUMMY.TOKEN.XXXX");
+    return new Response(JSON.stringify({ success: true, hostname: "example.com", metadata: { result_with_testing_key: true } }), { status: 200 });
+  };
   try {
-    assert.equal(await verifyTurnstile("XXXX.DUMMY.TOKEN.XXXX", "127.0.0.1", config), true);
-    assert.equal(await verifyTurnstile("invalid", "127.0.0.1", config), false);
-    assert.equal(await verifyTurnstile("XXXX.DUMMY.TOKEN.XXXX", "203.0.113.1", config), false);
+    const sessionId = "local-test-session-identity";
+    const token = mintLocalTurnstileToken(sessionId, config);
+    assert.equal(await verifyTurnstile(token, "127.0.0.1", config, sessionId), true);
+    assert.deepEqual(destinations, ["https://challenges.cloudflare.com/turnstile/v0/siteverify"]);
+    assert.equal(await verifyTurnstile("XXXX.DUMMY.TOKEN.XXXX", "127.0.0.1", config, sessionId), false);
+    assert.equal(await verifyTurnstile(token, "127.0.0.1", config, "other-session"), false);
+    assert.equal(await verifyTurnstile(token, "203.0.113.1", config, sessionId), false);
     Reflect.set(process.env, "NODE_ENV", "production");
     assert.equal(publicConfig(config).localTestMode, false);
-    assert.equal(await verifyTurnstile("XXXX.DUMMY.TOKEN.XXXX", "127.0.0.1", config), false);
+    assert.equal(await verifyTurnstile(token, "127.0.0.1", config, sessionId), false);
   } finally {
     globalThis.fetch = originalFetch;
     if (priorNodeEnv === undefined) Reflect.deleteProperty(process.env, "NODE_ENV"); else Reflect.set(process.env, "NODE_ENV", priorNodeEnv);

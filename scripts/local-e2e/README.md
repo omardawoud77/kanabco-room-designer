@@ -9,7 +9,7 @@ These two scripts make the existing protected route testable on one Mac. They ar
 - Cloudflare's public **development-only** Turnstile site/secret pair. The server still calls Siteverify and stores a single-use token hash in Redis. A real widget pair remains required in staging and production.
 - Network access from the Next.js process to Cloudflare Siteverify and OpenAI. In a restricted Codex shell, commands may need `require_escalated` because sandboxed DNS and Colima socket access can fail.
 
-Cloudflare's public testing pair is sitekey `1x00000000000000000000AA` and secret `1x0000000000000000000000000000000AA`. A live Siteverify probe returned `success: true`, `hostname: "example.com"`, a test-key marker, and no `action`. The route accepts this response only with `KANABCO_LOCAL_TURNSTILE_TEST=true`, exact dummy keys and token `XXXX.DUMMY.TOKEN.XXXX`, `NODE_ENV=development`, a loopback `ALLOWED_ORIGIN`, and a loopback trusted client IP. Production still requires the configured hostname and `room_design` action. Do not deploy the dummy pair. See [Cloudflare's test-key documentation](https://developers.cloudflare.com/turnstile/troubleshooting/testing/).
+Cloudflare's public testing pair is sitekey `1x00000000000000000000AA` and secret `1x0000000000000000000000000000000AA`. A live Siteverify probe returned `success: true`, `hostname: "example.com"`, a test-key marker, and no `action`. In development on loopback, the local verification button requests a short-lived, session-bound test token from the server. Each room-design request verifies Cloudflare's exact fixed dummy token with Siteverify, then consumes the unique local token in Redis. The local route requires `KANABCO_LOCAL_TURNSTILE_TEST=true`, exact dummy keys, `NODE_ENV=development`, a loopback `ALLOWED_ORIGIN`, and a signed session. Production still requires a real Turnstile token, configured hostname, and `room_design` action. Do not deploy the dummy pair. See [Cloudflare's test-key documentation](https://developers.cloudflare.com/turnstile/troubleshooting/testing/).
 
 Next.js development uses React debugging code that requires `unsafe-eval`; the app's CSP allows it only while `NODE_ENV=development`. The production CSP remains strict. Restart Next.js and reload the browser tab after changing this configuration.
 
@@ -30,12 +30,12 @@ Next.js development uses React debugging code that requires `unsafe-eval`; the a
    UPSTASH_REDIS_REST_URL=http://127.0.0.1:6391
    UPSTASH_REDIS_REST_TOKEN=<a third unquoted 32+ character random value>
    AI_IMAGE_RESERVED_USD=1.00
-   AI_DAILY_SESSION_USD_CAP=1.00
-   AI_DAILY_GLOBAL_USD_CAP=1.00
-   AI_REQ_PER_MIN_PER_IP=1
-   AI_REQ_PER_DAY_PER_IP=1
-   AI_REQ_PER_DAY_PER_SESSION=1
-   AI_REQ_PER_DAY_GLOBAL=1
+   AI_DAILY_SESSION_USD_CAP=7.00
+   AI_DAILY_GLOBAL_USD_CAP=7.00
+   AI_REQ_PER_MIN_PER_IP=3
+   AI_REQ_PER_DAY_PER_IP=7
+   AI_REQ_PER_DAY_PER_SESSION=7
+   AI_REQ_PER_DAY_GLOBAL=7
    AI_MAX_INFLIGHT_PER_IP=1
    AI_MAX_INFLIGHT_PER_SESSION=1
    AI_MAX_INFLIGHT_GLOBAL=1
@@ -67,7 +67,7 @@ Next.js development uses React debugging code that requires `unsafe-eval`; the a
    AI_EDGE_SHARED_SECRET="$(sed -n 's/^AI_EDGE_SHARED_SECRET=//p' .env.local)" node scripts/local-e2e/edge-proxy.mjs
    ```
 
-6. Visit **`http://127.0.0.1:3460/`**. The preview at port 3457 is a separate static demo. Set `AI_FEATURE_ENABLED=true` in `.env.local` and restart Next.js only after all local dependencies are ready. In the loopback development UI, choose **Kitchen**, upload the included fictional `demo/kitchen-before.png`, click **Use local test verification**, and submit **once**. Cloudflare's widget itself can fail in embedded browsers. This button supplies only Cloudflare's public dummy token; the server still verifies it remotely, checks Redis replay, and applies every other gate. Check that the image appears, the Redis counters advance, and the audit shows one image edit with usage/cost. Reuse inside the 10-minute replay window returns 403. The one-request daily cap blocks another generation after that window. Do not retry automatically after a timeout: first inspect OpenAI project usage and application logs.
+6. Visit **`http://127.0.0.1:3460/`**. The preview at port 3457 is a separate static demo. Set `AI_FEATURE_ENABLED=true` in `.env.local` and restart Next.js only after all local dependencies are ready. In the loopback development UI, choose **Kitchen**, upload the included fictional `demo/kitchen-before.png`, click **Use local test verification**, and submit. Cloudflare's widget itself can fail in embedded browsers. The button obtains a fresh local token bound to the browser session; the server still verifies the fixed dummy with Cloudflare Siteverify, checks Redis replay, and applies every other gate. After a completed attempt, click the button again to test a different room or category. The bounded local quota allows up to seven admitted generations per UTC day and charges a conservative $1 reservation against the $7 local cap for each success. Check that the image appears, the Redis counters advance, and the audit shows image-edit usage/cost. Reusing the same local token inside the 10-minute replay window returns 403. Do not retry automatically after a timeout: first inspect OpenAI project usage and application logs.
 
 7. Set `AI_FEATURE_ENABLED=false` again, restart Next.js if needed, stop the proxy and adapter, then remove only this disposable Redis container:
 
@@ -81,6 +81,6 @@ Next.js development uses React debugging code that requires `unsafe-eval`; the a
 - The proxy must strip incoming `x-kanabco-edge-secret` and `cf-connecting-ip` values; it injects its own values for `/api/room-design` only.
 - Missing Origin/custom header, malformed multipart, oversized body, invalid Turnstile token, and disabled kill switch should fail before an image edit. Existing `tests/security.test.ts` covers these early failures without paid calls.
 - `tests/redis-guards.integration.test.ts` exercises replay, concurrency, rolling quotas, budget reservations, settlement, and fail-closed behavior against a separate disposable Redis container. It calls `FLUSHDB`, so **never** point it at this E2E container or any shared Redis.
-- With one-request daily caps, a request admitted by the Redis quota can consume the day's slot even if moderation later blocks it. For a paid browser test, use a fresh disposable E2E container and a new Turnstile token. Never clear a shared quota store to get another paid attempt.
+- A request admitted by the Redis quota can consume a daily slot even if image validation or moderation later blocks it. The local UI checks file size and dimensions before sending, but the server remains authoritative. For a paid browser test, use a fresh local test token. Never clear a shared quota store to get another paid attempt.
 
 For the development team, replace this local proxy with the approved Cloudflare edge configuration and replace this local adapter with Upstash Redis REST. Recheck the real deployment's Origin, trusted IP, edge-secret injection, WAF, Turnstile hostname, server egress allowlist, and project spend limit before enabling the public route.

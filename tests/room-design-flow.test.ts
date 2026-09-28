@@ -122,6 +122,22 @@ test("kitchen concept succeeds without any catalog product or price", async () =
   });
 });
 
+test("every project category can create a custom concept with no automatic price", async () => {
+  await withProviders(async (calls) => {
+    const categories = ["sofa", "bed", "wardrobe", "dresser", "dressing-room", "kitchen"];
+    for (const category of categories) {
+      const response = await POST(await requestFor(category));
+      assert.equal(response.status, 200, `${category} should produce a concept`);
+      const payload = await response.json();
+      assert.equal(payload.project.type, category);
+      assert.equal(payload.project.source, "custom-concept");
+      assert.equal(payload.project.priceEgp, null);
+      assert.match(payload.imageDataUrl, /^data:image\/jpeg;base64,/);
+    }
+    assert.equal(calls.filter((call) => call.destination.endsWith("/images/edits")).length, categories.length);
+  });
+});
+
 test("sofa concept includes the approved product reference but no instant quote", async () => {
   await withProviders(async (calls) => {
     const response = await POST(await requestFor("sofa", "160"));

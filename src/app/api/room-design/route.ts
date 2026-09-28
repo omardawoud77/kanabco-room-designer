@@ -125,12 +125,12 @@ export async function POST(request: NextRequest) {
     // 4. Server-side Turnstile verification and replay protection.
     ip = clientIp(request, config) ?? "unknown";
     if (ip === "unknown") { reason = "client_ip_untrusted"; return apiError(503, config); }
-    turnstileSuccess = await verifyTurnstile(fields.turnstileToken, ip, config);
+    const sessionId = readSession(request, config);
+    turnstileSuccess = await verifyTurnstile(fields.turnstileToken, ip, config, sessionId);
     if (!turnstileSuccess) { reason = "turnstile"; return apiError(403, config); }
     if (!await consumeTurnstileToken(sha256(fields.turnstileToken))) { reason = "turnstile_replay"; return apiError(403, config); }
 
     // 5-6. IP/session and global concurrency slots, atomically in that order.
-    const sessionId = readSession(request, config);
     if (!sessionId) { reason = "session_missing"; return apiError(401, config); }
     sessionHash = sha256(sessionId);
     ipHash = privateIpHash(ip, config);
