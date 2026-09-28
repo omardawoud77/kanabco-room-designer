@@ -3,6 +3,7 @@ import test from "node:test";
 import sharp from "sharp";
 import { NextRequest } from "next/server";
 import { POST } from "../src/app/api/room-design/route";
+import { GET as getPublicConfig } from "../src/app/api/config/route";
 import { normalizeUploadedImage, InvalidImageError } from "../src/lib/images";
 import { ConfigurationError, publicConfig, serverConfig } from "../src/lib/config";
 import { billableUsageKnown, estimatedCostCents } from "../src/lib/openai-image";
@@ -37,6 +38,14 @@ test("kill switch rejects before reading the body or contacting providers", asyn
   assert.equal(response.status, 503);
 });
 
+test("disabled feature does not publish an active widget config", async () => {
+  configure();
+  process.env.AI_FEATURE_ENABLED = "false";
+  const response = await getPublicConfig(new NextRequest("https://kanabco.net/api/config"));
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), { error: "Feature unavailable" });
+});
+
 test("missing Origin is rejected before provider contact", async () => {
   configure();
   const response = await POST(new NextRequest(URL, { method: "POST", headers: {
@@ -53,6 +62,32 @@ test("missing trusted edge header is rejected before provider contact", async ()
   assert.equal(response.status, 403);
 });
 
+test("early rejects log the IP only after origin and edge authentication", async () => {
+  configure();
+  const originalInfo = console.info;
+  const attempts: Array<{ ipMasked?: string; reason?: string }> = [];
+  console.info = (message: unknown) => {
+    if (typeof message === "string") attempts.push(JSON.parse(message));
+  };
+  try {
+    const trusted = await POST(new NextRequest(URL, { method: "POST", headers: {
+      ...BASE_HEADERS, "content-type": "application/json",
+    }, body: "{}" }));
+    assert.equal(trusted.status, 415);
+    assert.equal(attempts.at(-1)?.ipMasked, "203.0.113.0");
+    assert.equal(attempts.at(-1)?.reason, "content_type");
+
+    const untrusted = await POST(new NextRequest(URL, { method: "POST", headers: {
+      ...BASE_HEADERS, "x-kanabco-edge-secret": "wrong-secret", "cf-connecting-ip": "198.51.100.77",
+    } }));
+    assert.equal(untrusted.status, 403);
+    assert.equal(attempts.at(-1)?.ipMasked, "unknown");
+    assert.equal(attempts.at(-1)?.reason, "origin_or_edge");
+  } finally {
+    console.info = originalInfo;
+  }
+});
+
 test("public image model and minimum cost reservation are fixed server-side", () => {
   configure();
   process.env.OPENAI_IMAGE_MODEL = "gpt-image-2.5-sunburst";
@@ -63,10 +98,36 @@ test("public image model and minimum cost reservation are fixed server-side", ()
   delete process.env.AI_IMAGE_RESERVED_USD;
 });
 
+test("enabled production service requires an HTTPS photo-processing notice", () => {
+  configure();
+  const priorNodeEnv = process.env.NODE_ENV;
+  const priorUrl = process.env.AI_PHOTO_PRIVACY_URL;
+  Reflect.set(process.env, "NODE_ENV", "production");
+  delete process.env.AI_PHOTO_PRIVACY_URL;
+  try {
+    assert.throws(() => serverConfig(), ConfigurationError);
+    process.env.AI_PHOTO_PRIVACY_URL = "http://kanabco.net/photo-privacy";
+    assert.throws(() => serverConfig(), ConfigurationError);
+    process.env.AI_PHOTO_PRIVACY_URL = "https://kanabco.net/photo-privacy";
+    assert.equal(publicConfig(serverConfig()).photoPrivacyUrl, "https://kanabco.net/photo-privacy");
+  } finally {
+    if (priorNodeEnv === undefined) Reflect.deleteProperty(process.env, "NODE_ENV"); else Reflect.set(process.env, "NODE_ENV", priorNodeEnv);
+    if (priorUrl === undefined) delete process.env.AI_PHOTO_PRIVACY_URL; else process.env.AI_PHOTO_PRIVACY_URL = priorUrl;
+  }
+});
+
 test("unknown image usage keeps the full reservation and is detectable", () => {
   assert.equal(billableUsageKnown(null), false);
   assert.equal(estimatedCostCents(null, 100), 100);
-  assert.equal(billableUsageKnown({ input_tokens_details: { image_tokens: 100, text_tokens: 10 }, output_tokens: 200 }), true);
+  const known = { input_tokens: 110, input_tokens_details: { image_tokens: 100, text_tokens: 10 }, output_tokens: 200, total_tokens: 310 };
+  assert.equal(billableUsageKnown(known), true);
+  assert.equal(estimatedCostCents(known, 100), 1);
+  assert.equal(billableUsageKnown({ ...known, input_tokens: 109 }), false);
+  assert.equal(billableUsageKnown({ ...known, total_tokens: 311 }), false);
+  assert.equal(billableUsageKnown({ ...known, output_tokens: -1 }), false);
+  assert.equal(billableUsageKnown({ ...known, input_tokens_details: { image_tokens: 1_000_001, text_tokens: 10 } }), false);
+  assert.equal(billableUsageKnown({ ...known, total_tokens: undefined }), false);
+  assert.equal(estimatedCostCents({ ...known, total_tokens: 311 }, 100), 100);
 });
 
 test("new custom categories are concepts while approved sofa references stay distinct", () => {

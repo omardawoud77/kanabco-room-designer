@@ -10,7 +10,7 @@ const ORIGIN = "http://127.0.0.1:3460";
 const ENV_KEYS = [
   "NODE_ENV", "AI_FEATURE_ENABLED", "KANABCO_LOCAL_TURNSTILE_TEST", "ALLOWED_ORIGIN",
   "AI_TRUSTED_CLIENT_IP_HEADER", "SESSION_SIGNING_KEY", "AI_EDGE_SHARED_SECRET",
-  "TURNSTILE_SITE_KEY", "TURNSTILE_SECRET_KEY", "TURNSTILE_EXPECTED_HOSTNAME", "OPENAI_API_KEY",
+  "TURNSTILE_SITE_KEY", "TURNSTILE_SECRET_KEY", "TURNSTILE_EXPECTED_HOSTNAME", "OPENAI_API_KEY", "AI_PHOTO_PRIVACY_URL",
 ] as const;
 
 function configureLocal() {
@@ -93,6 +93,7 @@ test("local tokens are fresh, session-bound, short-lived, and verified with only
 
     Reflect.set(process.env, "NODE_ENV", "production");
     process.env.ALLOWED_ORIGIN = "https://kanabco.net";
+    process.env.AI_PHOTO_PRIVACY_URL = "https://kanabco.net/photo-privacy";
     assert.equal((await mintToken(request(cookie))).status, 404);
     assert.equal(await verifyTurnstile(firstToken, "127.0.0.1", config, sessionId), false);
   } finally {

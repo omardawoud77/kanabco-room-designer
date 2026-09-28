@@ -165,10 +165,12 @@ export default function Home() {
   const [catalog, setCatalog] = useState<CatalogProduct[]>([]);
   const [catalogLoaded, setCatalogLoaded] = useState(false);
   const [siteKey, setSiteKey] = useState("");
+  const [photoPrivacyUrl, setPhotoPrivacyUrl] = useState<string | null>(null);
   const [localTestMode, setLocalTestMode] = useState(false);
   const [setupError, setSetupError] = useState("");
   const [catalogError, setCatalogError] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
+  const [photoDimensions, setPhotoDimensions] = useState({ width: 4, height: 3 });
   const [photoUrl, setPhotoUrl] = useState("");
   const [photoError, setPhotoError] = useState("");
   const [projectType, setProjectType] = useState<ProjectType>("sofa");
@@ -192,16 +194,17 @@ export default function Home() {
       .then(async (configResponse) => {
         if (!configResponse.ok) throw new Error("Setup unavailable");
         const config: unknown = await configResponse.json();
-        if (!config || typeof config !== "object" || typeof (config as { turnstileSiteKey?: unknown }).turnstileSiteKey !== "string" || !(config as { turnstileSiteKey: string }).turnstileSiteKey || typeof (config as { localTestMode?: unknown }).localTestMode !== "boolean") {
+        if (!config || typeof config !== "object" || typeof (config as { turnstileSiteKey?: unknown }).turnstileSiteKey !== "string" || !(config as { turnstileSiteKey: string }).turnstileSiteKey || typeof (config as { localTestMode?: unknown }).localTestMode !== "boolean" || !Object.hasOwn(config, "photoPrivacyUrl") || ((config as { photoPrivacyUrl?: unknown }).photoPrivacyUrl !== null && typeof (config as { photoPrivacyUrl?: unknown }).photoPrivacyUrl !== "string")) {
           throw new Error("Invalid config");
         }
         if (active) {
           setSiteKey((config as { turnstileSiteKey: string }).turnstileSiteKey);
           setLocalTestMode((config as { localTestMode: boolean }).localTestMode);
+          setPhotoPrivacyUrl((config as { photoPrivacyUrl: string | null }).photoPrivacyUrl);
         }
       })
       .catch(() => {
-        if (active) setSetupError("The design studio is unavailable right now. Please refresh later.");
+        if (active) setSetupError("The design studio is temporarily unavailable. Please come back later.");
       });
     fetch("/api/catalog", { cache: "no-store", credentials: "same-origin" })
       .then(async (catalogResponse) => {
@@ -251,6 +254,24 @@ export default function Home() {
   const product = catalog.find((item) => item.id === productId);
   const validWidth = !roomWidthCm || (/^\d{3,4}$/.test(roomWidthCm) && Number(roomWidthCm) >= 180 && Number(roomWidthCm) <= 1000);
   const canSubmit = !!photo && !!turnstileToken && validWidth && !submitting && !setupError;
+  const submitHelp = submitting
+    ? `Please keep this page open. ${elapsedSeconds}s elapsed; this can take up to 4 minutes.`
+    : setupError
+      ? "The design studio is unavailable. Please come back later."
+      : !validWidth
+        ? "Enter a room width from 180 to 1000 cm, or clear that field to continue."
+        : !photo
+          ? "Add a room photo to continue."
+          : !turnstileToken
+            ? "Complete verification to continue."
+            : "Ready to create one concept image.";
+  const liveStatus = submitting
+    ? elapsedSeconds < 30
+      ? "Creating your concept. Please keep this page open."
+      : `Still creating your concept. ${Math.floor(elapsedSeconds / 30) * 30} seconds elapsed.`
+    : result
+      ? `Your ${result.project.label.toLowerCase()} concept is ready. The before and after images are in the preview.`
+      : "";
 
   async function choosePhoto(file?: File) {
     if (submitting) return;
@@ -261,7 +282,9 @@ export default function Home() {
     setPhotoError("");
     if (!file) return;
     if (!ACCEPTED_TYPES.has(file.type)) {
-      setPhotoError("Choose a JPG, PNG, or WebP photo.");
+      setPhotoError(/\.(?:heic|heif)$/i.test(file.name) || /^image\/hei[cf]$/i.test(file.type)
+        ? "Export your HEIC or HEIF photo as a JPG, then try again."
+        : "Choose a JPG, PNG, or WebP photo.");
       return;
     }
     if (file.size > MAX_IMAGE_BYTES) {
@@ -290,6 +313,7 @@ export default function Home() {
         return;
       }
       setPhotoError("");
+      setPhotoDimensions({ width, height });
       setPhoto(file);
     } catch {
       if (selectionId === photoSelectionId.current) {
@@ -319,7 +343,11 @@ export default function Home() {
 
   function chooseCategory(id: ProjectType) {
     chooseProject(id);
-    document.getElementById("studio")?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    window.requestAnimationFrame(() => {
+      const studio = document.getElementById("studio");
+      studio?.focus({ preventScroll: true });
+      studio?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    });
   }
 
   function chooseProduct(id: string) {
@@ -383,7 +411,7 @@ export default function Home() {
       <header className="site-header">
         <div className="shell header-inner">
           <a className="brand" href="https://kanabco.net" aria-label="Kanabco home">
-            <img src="/brand/kanabco-logo.png" alt="" /><span className="brand-divider" aria-hidden="true" /><strong>custom</strong>
+            <img src="/brand/kanabco-logo.png" alt="" width={529} height={328} /><span className="brand-divider" aria-hidden="true" /><strong>custom</strong>
           </a>
           <nav aria-label="Main navigation">
             <a href="https://kanabco.net">Products</a>
@@ -403,7 +431,7 @@ export default function Home() {
           <p className="hero-note">Visual inspiration · A specialist confirms what can be made and quoted</p>
         </div>
         <div className="hero-art">
-          <img src="/brand/sofa-room.webp" alt="A cream Kanabco sofa from the current collection" />
+          <img src="/brand/sofa-room.webp" alt="A cream Kanabco sofa from the current collection" width={1505} height={453} />
           <span className="art-caption">The starting point is yours</span>
         </div>
       </section>
@@ -423,8 +451,8 @@ export default function Home() {
         </div>
         <div className="category-grid">
           {CATEGORY_CARDS.map((item) => (
-            <button key={item.id} className={`category-card ${projectType === item.id ? "category-selected" : ""}`} type="button" onClick={() => chooseCategory(item.id)} aria-label={`Explore ${item.label}`} disabled={submitting}>
-              <span className={`category-image category-${item.id}`}><img src={item.image} alt="" loading="lazy" /></span>
+            <button key={item.id} className={`category-card ${projectType === item.id ? "category-selected" : ""}`} type="button" onClick={() => chooseCategory(item.id)} aria-label={`Explore ${item.label}`} aria-pressed={projectType === item.id} disabled={submitting}>
+              <span className={`category-image category-${item.id}`}><img src={item.image} alt="" width={item.id === "sofa" ? 1505 : 1536} height={item.id === "sofa" ? 453 : 1024} loading="lazy" /></span>
               <span className="category-body">
                 <span className="category-meta">{item.catalog ? "KANABCO SOFA REFERENCE AVAILABLE" : "EXPLORATORY CONCEPT"}</span>
                 <strong>{item.label}</strong>
@@ -453,12 +481,12 @@ export default function Home() {
               <label className={`upload-zone ${photoUrl ? "has-photo" : ""}`} htmlFor="room-photo" onDragOver={(event) => event.preventDefault()} onDrop={onPhotoDrop}>
                 <input id="room-photo" className="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp" onChange={onPhotoChange} disabled={submitting} aria-describedby="photo-help photo-error" />
                 {photoUrl ? (
-                  <><img src={photoUrl} alt="Preview of your uploaded room" /><span className="upload-change">Change photo</span></>
+                  <><img src={photoUrl} alt="Preview of your uploaded room" width={photoDimensions.width} height={photoDimensions.height} /><span className="upload-change">Change photo</span></>
                 ) : (
                   <><span className="upload-icon"><Icon kind="upload" /></span><strong>Drop a photo here, or choose a file</strong><small>JPG, PNG or WebP · 320 px minimum · Up to 8 MB</small></>
                 )}
               </label>
-              <p id="photo-help" className="microcopy">We send your photo to OpenAI to create one concept. Avoid showing people or private information.</p>
+              <p id="photo-help" className="microcopy">We send your photo to OpenAI to create one concept. Avoid showing people or private information. Export HEIC or HEIF phone photos as JPG before uploading. {photoPrivacyUrl && <a href={photoPrivacyUrl}>How we handle your photo</a>}</p>
               {photoError && <p id="photo-error" role="alert" className="field-error">{photoError}</p>}
             </fieldset>
 
@@ -488,7 +516,7 @@ export default function Home() {
                       {catalog.filter((item) => item.category.toLowerCase().includes("sofa")).map((item) => (
                         <label key={item.id} className={`product-card ${productId === item.id ? "selected" : ""} ${submitting ? "disabled" : ""}`}>
                           <input className="visually-hidden" type="radio" name="sofa-reference" value={item.id} checked={productId === item.id} onChange={() => chooseProduct(item.id)} disabled={submitting} />
-                          {safeCatalogImage(item.imageUrl) && <img className="product-image" src={safeCatalogImage(item.imageUrl)!} alt="" />}
+                          {safeCatalogImage(item.imageUrl) && <img className="product-image" src={safeCatalogImage(item.imageUrl)!} alt="" width={1121} height={1403} />}
                           <span className="product-category">Kanabco reference</span>
                           <strong>{item.name}</strong>
                           <small>Specialist confirms availability and price</small>
@@ -537,11 +565,12 @@ export default function Home() {
             </fieldset>
 
             <div className="submit-section">
-              {siteKey && <Turnstile siteKey={siteKey} localTestMode={localTestMode} onTokenChange={setTurnstileToken} resetNonce={resetNonce} />}
+              {siteKey && !setupError && <Turnstile siteKey={siteKey} localTestMode={localTestMode} onTokenChange={setTurnstileToken} resetNonce={resetNonce} />}
               <button className="button button-primary submit-button" type="submit" disabled={!canSubmit} aria-describedby="submit-help">
-                {submitting ? "Creating your concept…" : "Create my room concept"} {!submitting && <Icon kind="arrow" />}
+                {submitting ? "Creating your concept…" : setupError ? "Studio temporarily unavailable" : "Create my room concept"} {!submitting && !setupError && <Icon kind="arrow" />}
               </button>
-              <p id="submit-help" className="microcopy">{submitting ? `Please keep this page open. ${elapsedSeconds}s elapsed; this can take up to 4 minutes.` : !canSubmit ? "Add a photo and complete verification to continue." : "Ready to create one concept image."}</p>
+              <p id="submit-help" className="microcopy">{submitHelp}</p>
+              <p className="visually-hidden" role="status" aria-live="polite" aria-atomic="true">{liveStatus}</p>
               {submitting && <div className="loading-track" aria-hidden="true"><span /></div>}
               {submitError && <p role="alert" className="notice notice-error">{submitError}</p>}
               <p className="terms-note">Automated or scripted use is prohibited. We may limit or block abusive activity.</p>
@@ -553,8 +582,8 @@ export default function Home() {
             {result && photoUrl ? (
               <div className="result-content">
                 <div className="image-pair">
-                  <figure><img src={photoUrl} alt="Your original room before the design" /><figcaption>Before · Your photo</figcaption></figure>
-                  <figure><img src={result.imageDataUrl} alt={`AI-generated ${result.project.label} concept`} /><figcaption>After · Design concept</figcaption></figure>
+                  <figure><img src={photoUrl} alt="Your original room before the design" width={photoDimensions.width} height={photoDimensions.height} /><figcaption>Before · Your photo</figcaption></figure>
+                  <figure><img src={result.imageDataUrl} alt={`AI-generated ${result.project.label} concept`} width={4} height={3} /><figcaption>After · Design concept</figcaption></figure>
                 </div>
                 <div className="result-product">
                   <span className="eyebrow">{result.project.source === "catalog-reference" ? "SOFA REFERENCE" : "CUSTOM PROJECT IDEA"}</span>
@@ -570,7 +599,7 @@ export default function Home() {
               </div>
             ) : (
               <div className="preview-empty">
-                {photoUrl ? <img src={photoUrl} alt="Your uploaded room, ready for a design concept" /> : <div className="preview-placeholder"><Icon kind="sparkles" /><span>Your room goes here</span></div>}
+                {photoUrl ? <img src={photoUrl} alt="Your uploaded room, ready for a design concept" width={photoDimensions.width} height={photoDimensions.height} /> : <div className="preview-placeholder"><Icon kind="sparkles" /><span>Your room goes here</span></div>}
                 <div className="preview-empty-copy"><strong>{submitting ? "Making room for new ideas…" : photoUrl ? "Your room is ready" : "See the possibility"}</strong><p>{submitting ? "We’re preparing your concept. Please keep this page open." : "Your before and after views will appear here once your concept is ready."}</p></div>
               </div>
             )}
@@ -585,7 +614,7 @@ export default function Home() {
         <p>Use the preview to explain what you love. Ask a Kanabco specialist whether the project is offered, what can be made, and how it would be measured and quoted.</p>
       </section>
 
-      <footer className="site-footer"><div className="shell"><div className="footer-brand"><img src="/brand/kanabco-logo-white.png" alt="Kanabco" /><span>room designer</span></div><p>AI concepts are visual inspiration. They do not confirm that Kanabco offers a category or can make the pictured design.</p></div></footer>
+      <footer className="site-footer"><div className="shell"><div className="footer-brand"><img src="/brand/kanabco-logo-white.png" alt="Kanabco" width={534} height={139} /><span>room designer</span></div><p>AI concepts are visual inspiration. They do not confirm that Kanabco offers a category or can make the pictured design.</p></div></footer>
     </main>
   );
 }

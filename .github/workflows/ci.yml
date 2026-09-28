@@ -17,6 +17,7 @@ jobs:
           node-version: '20'
           cache: npm
       - run: npm ci
+      - run: npm audit --omit=dev
       - run: npm run typecheck
       - run: npm test
       - name: Start isolated Redis for Lua guard tests

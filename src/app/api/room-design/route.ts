@@ -12,7 +12,7 @@ import { clientIp, maskedIp, privateIpHash, readSession, sha256 } from "@/lib/id
 import { InvalidImageError, normalizeGeneratedImage, normalizeUploadedImage } from "@/lib/images";
 import { billableUsageKnown, editRoomImage, estimatedCostCents, moderateRoomImage, OpenAiUnavailableError, type ImageUsage } from "@/lib/openai-image";
 import { buildRoomPrompt } from "@/lib/prompt";
-import { acquireSlots, cancelReservation, consumeTurnstileToken, getRedis, GuardUnavailableError, releaseSlots, reserveRequest, settleRequest } from "@/lib/redis-guards";
+import { acquireRepeatLock, acquireSlots, cancelReservation, consumeTurnstileToken, GuardUnavailableError, releaseRepeatLock, releaseSlots, reserveRequest, settleRequest } from "@/lib/redis-guards";
 import { verifyTurnstile } from "@/lib/turnstile";
 
 export const runtime = "nodejs";
@@ -79,6 +79,8 @@ export async function POST(request: NextRequest) {
   let dayUtc: string | null = null;
   let slotsAcquired = false;
   let budgetReserved = false;
+  let repeatLocked = false;
+  let repeatDigest: string | null = null;
   let imageCallStarted = false;
   let settled = false;
   let turnstileSuccess = false;
@@ -97,6 +99,7 @@ export async function POST(request: NextRequest) {
 
     // 2. Method, origin, content type and bounded body.
     if (!requestOriginAllowed(request, config) || !edgeAllowed(request, config)) { reason = "origin_or_edge"; return apiError(403, config); }
+    ip = clientIp(request, config) ?? "unknown";
     const contentType = request.headers.get("content-type") || "";
     if (!/^multipart\/form-data;\s*boundary=[A-Za-z0-9'()+_,.\/:=?-]{1,200}(?:;.*)?$/i.test(contentType)) {
       reason = "content_type";
@@ -123,7 +126,6 @@ export async function POST(request: NextRequest) {
     inputChars = fields.projectType.length + (fields.productId?.length ?? 0) + fields.style.length + fields.color.length + fields.material.length + (fields.roomWidthCm?.length ?? 0);
 
     // 4. Server-side Turnstile verification and replay protection.
-    ip = clientIp(request, config) ?? "unknown";
     if (ip === "unknown") { reason = "client_ip_untrusted"; return apiError(503, config); }
     const sessionId = readSession(request, config);
     turnstileSuccess = await verifyTurnstile(fields.turnstileToken, ip, config, sessionId);
@@ -165,10 +167,10 @@ export async function POST(request: NextRequest) {
     let room: Buffer;
     try { room = await normalizeUploadedImage(upload, config.maxImageBytes, config.maxImagePixels); }
     catch (error) { reason = error instanceof InvalidImageError ? "image_invalid" : "image_processing"; return apiError(400, config); }
-    const repeatDigest = sha256(Buffer.concat([room, Buffer.from(`${fields.projectType}|${fields.productId ?? ""}|${fields.style}|${fields.color}|${fields.material}|${width ?? ""}`)]));
-    const repeatKey = `{kanabco-ai}:v1:repeat:${sessionHash}:${repeatDigest}`;
-    const unique = await getRedis().set(repeatKey, "1", { nx: true, ex: 600 });
-    if (unique !== "OK") { reason = "repeat"; return apiError(429, config, 600); }
+    repeatDigest = sha256(Buffer.concat([room, Buffer.from(`${fields.projectType}|${fields.productId ?? ""}|${fields.style}|${fields.color}|${fields.material}|${width ?? ""}`)]));
+    const unique = await acquireRepeatLock({ sessionHash, repeatDigest, jobId: requestId });
+    if (!unique) { reason = "repeat"; return apiError(429, config, 600); }
+    repeatLocked = true;
     prompt = buildRoomPrompt({ projectType: fields.projectType, product, style: fields.style, color: fields.color, material: fields.material, roomWidthCm: width });
     const reference = product ? await sharp(await productReference(product)).resize(1024, 1024, { fit: "inside" }).png().toBuffer() : undefined;
 
@@ -220,6 +222,10 @@ export async function POST(request: NextRequest) {
       "internal";
     return apiError(503, config);
   } finally {
+    if (repeatLocked && !imageCallStarted && sessionHash && repeatDigest) {
+      try { await releaseRepeatLock({ sessionHash, repeatDigest, jobId: requestId }); }
+      catch { console.error(JSON.stringify({ event: "REPEAT_LOCK_RELEASE_FAILED", requestId })); }
+    }
     if (budgetReserved && !imageCallStarted && dayUtc) {
       try { await cancelReservation({ jobId: requestId, dayUtc }); }
       catch { console.error(JSON.stringify({ event: "RESERVATION_CANCEL_FAILED", requestId })); }

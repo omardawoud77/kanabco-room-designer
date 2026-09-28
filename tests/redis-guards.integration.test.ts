@@ -3,10 +3,12 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import test from "node:test";
 import {
+  acquireRepeatLock,
   acquireSlots,
   cancelReservation,
   consumeTurnstileToken,
   GuardUnavailableError,
+  releaseRepeatLock,
   releaseSlots,
   reserveRequest,
   settleRequest,
@@ -95,6 +97,23 @@ test("Redis guard Lua scripts are atomic and fail closed against real Redis", {
       const results = await Promise.all(Array.from({ length: 12 }, () => consumeTurnstileToken(hash("c"))));
       assert.equal(results.filter(Boolean).length, 1);
       assert.equal(await consumeTurnstileToken(hash("c")), false);
+    });
+
+    await t.test("repeat lock releases only for its owner, including after a later acquisition", async () => {
+      await reset();
+      const identity = { sessionHash: hash("a"), repeatDigest: hash("b") };
+      const first = { ...identity, jobId: jobId() };
+      const second = { ...identity, jobId: jobId() };
+      assert.equal(await acquireRepeatLock(first), true);
+      assert.equal(await acquireRepeatLock(second), false);
+      await releaseRepeatLock(second);
+      assert.equal(await acquireRepeatLock(second), false);
+      await releaseRepeatLock(first);
+      assert.equal(await acquireRepeatLock(second), true);
+      await releaseRepeatLock(first);
+      assert.equal(await acquireRepeatLock(first), false);
+      await releaseRepeatLock(second);
+      assert.equal(await acquireRepeatLock(first), true);
     });
 
     await t.test("IP and global slots block concurrent jobs and release cleanly", async () => {

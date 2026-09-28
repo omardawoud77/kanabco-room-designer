@@ -10,8 +10,10 @@ export type ImageUsage = {
 };
 
 type BillableImageUsage = ImageUsage & {
+  input_tokens: number;
   input_tokens_details: { image_tokens: number; text_tokens: number };
   output_tokens: number;
+  total_tokens: number;
 };
 
 export class OpenAiUnavailableError extends Error {}
@@ -107,15 +109,24 @@ export async function editRoomImage(options: {
 
 export function estimatedCostCents(usage: ImageUsage | null, reservedCents: number): number {
   if (!billableUsageKnown(usage)) return reservedCents;
-  const imageInput = usage.input_tokens_details?.image_tokens;
-  const textInput = usage.input_tokens_details?.text_tokens;
+  const imageInput = usage.input_tokens_details.image_tokens;
+  const textInput = usage.input_tokens_details.text_tokens;
   const output = usage.output_tokens;
-  const usd = ((imageInput as number) * 8 + (textInput as number) * 5 + (output as number) * 30) / 1_000_000;
+  const usd = (imageInput * 8 + textInput * 5 + output * 30) / 1_000_000;
   return Math.max(1, Math.ceil(usd * 100));
 }
 
 export function billableUsageKnown(usage: ImageUsage | null): usage is BillableImageUsage {
   if (!usage) return false;
-  return [usage.input_tokens_details?.image_tokens, usage.input_tokens_details?.text_tokens, usage.output_tokens]
-    .every((value) => Number.isSafeInteger(value) && (value as number) >= 0);
+  const image = usage.input_tokens_details?.image_tokens;
+  const text = usage.input_tokens_details?.text_tokens;
+  const input = usage.input_tokens;
+  const output = usage.output_tokens;
+  const total = usage.total_tokens;
+  if (![image, text, input, output, total].every((value) => Number.isSafeInteger(value) && (value as number) >= 0 && (value as number) <= 1_000_000)) {
+    return false;
+  }
+  return (image as number) > 0 && (output as number) > 0 &&
+    input === (image as number) + (text as number) &&
+    total === (input as number) + (output as number);
 }

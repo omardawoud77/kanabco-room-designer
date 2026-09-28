@@ -35,12 +35,29 @@ function gatewayBaseUrl(): string | null {
   return value;
 }
 
+function photoPrivacyUrl(): string | null {
+  const value = process.env.AI_PHOTO_PRIVACY_URL?.trim();
+  if (!value) {
+    if (process.env.NODE_ENV === "production" && featureEnabled()) throw new ConfigurationError();
+    return null;
+  }
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || !url.hostname || url.username || url.password || value.length > 2048) {
+      throw new ConfigurationError();
+    }
+    return url.href;
+  } catch {
+    throw new ConfigurationError();
+  }
+}
+
 export function featureEnabled(): boolean {
   return process.env.AI_FEATURE_ENABLED === "true";
 }
 
 export function publicConfig(config: ServerConfig) {
-  return { turnstileSiteKey: config.turnstileSiteKey, localTestMode: isLocalTurnstileTestConfig(config) };
+  return { turnstileSiteKey: config.turnstileSiteKey, localTestMode: isLocalTurnstileTestConfig(config), photoPrivacyUrl: config.photoPrivacyUrl };
 }
 
 export function serverConfig() {
@@ -62,6 +79,7 @@ export function serverConfig() {
   if (cfAigToken && (cfAigToken.length > 1024 || /[\r\n]/.test(cfAigToken))) throw new ConfigurationError();
   return {
     allowedOrigin,
+    photoPrivacyUrl: photoPrivacyUrl(),
     sessionSigningKey,
     edgeSharedSecret,
     clientIpHeader: required("AI_TRUSTED_CLIENT_IP_HEADER").toLowerCase(),
@@ -84,7 +102,7 @@ export function serverConfig() {
     ipInflight: boundedInteger("AI_MAX_INFLIGHT_PER_IP", 1, 1, 100),
     sessionInflight: boundedInteger("AI_MAX_INFLIGHT_PER_SESSION", 1, 1, 100),
     globalInflight: boundedInteger("AI_MAX_INFLIGHT_GLOBAL", 2, 1, 1000),
-    sessionUsdCents: dollarCents("AI_DAILY_SESSION_USD_CAP", "1.00", 1, 1000000),
+    sessionUsdCents: dollarCents("AI_DAILY_SESSION_USD_CAP", "2.00", 1, 1000000),
     globalUsdCents: dollarCents("AI_DAILY_GLOBAL_USD_CAP", "10.00", 1, 100000000),
     alert10MinCents: dollarCents("ALERT_SPEND_USD_PER_10MIN", "2.00", 1, 100000000),
     logPrompts: process.env.LOG_PROMPTS === "true",

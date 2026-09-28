@@ -4,6 +4,7 @@ const PREFIX = "{kanabco-ai}:v1";
 const DAY_TTL_SECONDS = 172_800;
 const MINUTE_TTL_SECONDS = 180;
 const TOKEN_TTL_SECONDS = 600;
+const REPEAT_TTL_SECONDS = 600;
 
 let redisClient: Redis | undefined;
 
@@ -88,6 +89,50 @@ export async function consumeTurnstileToken(tokenHash: string): Promise<boolean>
   );
   if (result !== 0 && result !== 1) throw new GuardUnavailableError();
   return result === 1;
+}
+
+const ACQUIRE_REPEAT_SCRIPT = `
+local accepted = redis.call('SET', KEYS[1], ARGV[1], 'NX', 'EX', tonumber(ARGV[2]))
+if accepted then return 1 end
+return 0
+`;
+
+const RELEASE_REPEAT_SCRIPT = `
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  return redis.call('DEL', KEYS[1])
+end
+return 0
+`;
+
+function repeatKey(sessionHash: string, repeatDigest: string): string {
+  return `${PREFIX}:repeat:${hash(sessionHash)}:${hash(repeatDigest)}`;
+}
+
+export async function acquireRepeatLock(options: {
+  sessionHash: string;
+  repeatDigest: string;
+  jobId: string;
+}): Promise<boolean> {
+  const result = await evalScript<number>(
+    ACQUIRE_REPEAT_SCRIPT,
+    [repeatKey(options.sessionHash, options.repeatDigest)],
+    [job(options.jobId), REPEAT_TTL_SECONDS],
+  );
+  if (result !== 0 && result !== 1) throw new GuardUnavailableError();
+  return result === 1;
+}
+
+export async function releaseRepeatLock(options: {
+  sessionHash: string;
+  repeatDigest: string;
+  jobId: string;
+}): Promise<void> {
+  const result = await evalScript<number>(
+    RELEASE_REPEAT_SCRIPT,
+    [repeatKey(options.sessionHash, options.repeatDigest)],
+    [job(options.jobId)],
+  );
+  if (result !== 0 && result !== 1) throw new GuardUnavailableError();
 }
 
 const ACQUIRE_SCRIPT = `

@@ -38,6 +38,8 @@ function redisResult(command: unknown): unknown {
   assert.equal(command[0], "eval");
   const script = String(command[1]);
   if (script.includes("local result = redis.call('SET'")) return 1;
+  if (script.includes("local accepted = redis.call('SET'")) return 1;
+  if (script.includes("if redis.call('GET', KEYS[1]) == ARGV[1]")) return 1;
   if (script.includes("local lease_end")) return 0;
   if (script.includes("session_total + reserve")) return [0, 0];
   if (script.includes("local ten_spend")) return [0, 0];
@@ -46,7 +48,7 @@ function redisResult(command: unknown): unknown {
   throw new Error("Unexpected Redis script in integration test");
 }
 
-async function withProviders<T>(run: (calls: ProviderCall[]) => Promise<T>): Promise<T> {
+async function withProviders<T>(run: (calls: ProviderCall[]) => Promise<T>, options: { moderationFlagged?: boolean; imageUnavailable?: boolean } = {}): Promise<T> {
   configure();
   const generated = await sharp({ create: { width: 1024, height: 1024, channels: 3, background: "#d9d0c6" } }).jpeg().toBuffer();
   const originalFetch = globalThis.fetch;
@@ -62,9 +64,10 @@ async function withProviders<T>(run: (calls: ProviderCall[]) => Promise<T>): Pro
       return json(commands.map((command) => ({ result: redisResult(command) })));
     }
     if (destination === "https://api.openai.com/v1/moderations") {
-      return json({ results: [{ flagged: false }] });
+      return json({ results: [{ flagged: options.moderationFlagged ?? false }] });
     }
     if (destination === "https://api.openai.com/v1/images/edits") {
+      if (options.imageUnavailable) return new Response("Unavailable", { status: 503 });
       return json({
         data: [{ b64_json: generated.toString("base64") }],
         usage: { input_tokens: 250, input_tokens_details: { image_tokens: 200, text_tokens: 50 }, output_tokens: 100, total_tokens: 350 },
@@ -162,4 +165,46 @@ test("a catalog product cannot be attached to a kitchen; no OpenAI call is made"
     assert.equal(calls.filter((call) => call.destination.startsWith("https://api.openai.com/")).length, 0);
     assert.ok(calls.some((call) => call.destination === "https://challenges.cloudflare.com/turnstile/v0/siteverify"));
   });
+});
+
+test("moderation rejection releases the repeat lock without calling Images Edit", async () => {
+  await withProviders(async (calls) => {
+    const response = await POST(await requestFor("kitchen"));
+    assert.equal(response.status, 403);
+    assert.equal(calls.filter((call) => call.destination.endsWith("/images/edits")).length, 0);
+    const redisScripts = calls
+      .filter((call) => call.destination === "https://mock.redis.invalid/pipeline")
+      .flatMap((call) => JSON.parse(String(call.body)) as unknown[][])
+      .map((command) => String(command[1]));
+    assert.ok(redisScripts.some((script) => script.includes("local accepted = redis.call('SET'")));
+    assert.ok(redisScripts.some((script) => script.includes("if redis.call('GET', KEYS[1]) == ARGV[1]")));
+  }, { moderationFlagged: true });
+});
+
+test("successful Images Edit keeps the duplicate lock for the replay window", async () => {
+  await withProviders(async (calls) => {
+    const response = await POST(await requestFor("kitchen"));
+    assert.equal(response.status, 200);
+    const redisScripts = calls
+      .filter((call) => call.destination === "https://mock.redis.invalid/pipeline")
+      .flatMap((call) => JSON.parse(String(call.body)) as unknown[][])
+      .map((command) => String(command[1]));
+    assert.ok(redisScripts.some((script) => script.includes("local accepted = redis.call('SET'")));
+    assert.ok(!redisScripts.some((script) => script.includes("if redis.call('GET', KEYS[1]) == ARGV[1]")));
+  });
+});
+
+test("uncertain provider failure keeps the duplicate lock and cost reservation", async () => {
+  await withProviders(async (calls) => {
+    const response = await POST(await requestFor("kitchen"));
+    assert.equal(response.status, 503);
+    assert.equal(calls.filter((call) => call.destination.endsWith("/images/edits")).length, 1);
+    const redisScripts = calls
+      .filter((call) => call.destination === "https://mock.redis.invalid/pipeline")
+      .flatMap((call) => JSON.parse(String(call.body)) as unknown[][])
+      .map((command) => String(command[1]));
+    assert.ok(redisScripts.some((script) => script.includes("local accepted = redis.call('SET'")));
+    assert.ok(!redisScripts.some((script) => script.includes("if redis.call('GET', KEYS[1]) == ARGV[1]")));
+    assert.ok(!redisScripts.some((script) => script.includes("'cancelled'")));
+  }, { imageUnavailable: true });
 });
