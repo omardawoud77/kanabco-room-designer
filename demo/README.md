@@ -4,7 +4,9 @@ Open `index.html` in a local browser. It is a standalone visual walkthrough: no 
 
 The before and after PNGs were created with Codex's built-in imagegen tool from fictional imagery. They are **not** a Kanabco product, a production API result, an existing customer room, or a technical kitchen plan. The result intentionally preserves the room angle and major architecture while illustrating a cabinet and finish direction. Generated details must be checked by a specialist.
 
-`paid-kitchen-concept.jpg` is a separate result from one successful OpenAI Images Edit API call against the same fictional before image during local testing. It is shown beneath the interactive comparison. The static demo itself still makes no API request. The paid result makes the window smaller and changes parts of the room geometry; it is not a faithful renovation preview, measured kitchen design, existing Kanabco product, or approved quote.
+`ui-desktop-preview.jpg` and `ui-mobile-preview.jpg` show the finished standalone site's layout at 1280 px and 390 px. They were captured from a temporary local production build for visual review; they do not prove that the public API, live Kanabco integration, or production Turnstile is ready.
+
+`paid-local-e2e-concept.jpg` is the separate result shown beneath the interactive comparison. It came from the protected local route through Cloudflare development Siteverify, Redis guards, moderation, and OpenAI Images Edit. It broadly preserved the room structure on visual inspection, but it is not a measured kitchen design, existing Kanabco product, or approved quote. The older `paid-kitchen-concept.jpg` came from a direct provider smoke test and changed the window geometry; it remains for comparison. The static demo itself makes no API request.
 
 ## Generation prompts
 

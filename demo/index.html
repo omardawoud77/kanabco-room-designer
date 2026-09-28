@@ -69,12 +69,12 @@
       <div class="step"><b>03</b><strong>Generate once</strong><small>Turnstile, rate limits, and budgets gate the server call.</small></div>
       <div class="step"><b>04</b><strong>Ask a specialist</strong><small>Kanabco confirms whether it can be made and quoted.</small></div>
     </div>
-    <section class="card paid-result" aria-label="Paid OpenAI image edit test result">
-      <img src="paid-kitchen-concept.jpg" alt="Real OpenAI API test result showing a conceptual kitchen design in the fictional room">
+    <section class="card paid-result" aria-label="Protected local API image edit test result">
+      <img src="paid-local-e2e-concept.jpg" alt="Real protected API test result showing a conceptual kitchen design in the fictional room">
       <div>
-        <p class="eyebrow">One real API test</p>
+        <p class="eyebrow">Real protected API test</p>
         <h2>Generated from this fictional room</h2>
-        <p>This separate concept came from one Images Edit request during local testing. It shows the actual provider output; the interactive comparison above remains a curated presentation sample. The model changed the window size and some room geometry, so this result still needs fidelity review.</p>
+        <p>This concept passed through the local server route, Turnstile test verification, Redis quotas, moderation, and OpenAI Images Edit. The interactive comparison above remains a curated presentation sample. The output broadly preserved the room structure, but every generated design still needs visual and specialist review.</p>
         <p class="fine">Concept only · Not a Kanabco product or confirmed quote</p>
       </div>
     </section>

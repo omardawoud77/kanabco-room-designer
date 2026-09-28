@@ -4,10 +4,11 @@ import sharp from "sharp";
 import { NextRequest } from "next/server";
 import { POST } from "../src/app/api/room-design/route";
 import { normalizeUploadedImage, InvalidImageError } from "../src/lib/images";
-import { ConfigurationError, serverConfig } from "../src/lib/config";
+import { ConfigurationError, publicConfig, serverConfig } from "../src/lib/config";
 import { billableUsageKnown, estimatedCostCents } from "../src/lib/openai-image";
 import { buildRoomPrompt } from "../src/lib/prompt";
 import { findProduct } from "../src/lib/catalog";
+import { verifyTurnstile } from "../src/lib/turnstile";
 
 const URL = "https://kanabco.net/api/room-design";
 const BASE_HEADERS = {
@@ -123,6 +124,34 @@ test("failed Turnstile verification never reaches image generation", async () =>
     assert.deepEqual(destinations, ["https://challenges.cloudflare.com/turnstile/v0/siteverify"]);
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("Cloudflare dummy response works only in explicit loopback development mode", async () => {
+  configure();
+  const priorNodeEnv = process.env.NODE_ENV;
+  const priorLocalFlag = process.env.KANABCO_LOCAL_TURNSTILE_TEST;
+  const originalFetch = globalThis.fetch;
+  Reflect.set(process.env, "NODE_ENV", "development");
+  process.env.KANABCO_LOCAL_TURNSTILE_TEST = "true";
+  process.env.ALLOWED_ORIGIN = "http://127.0.0.1:3461";
+  process.env.TURNSTILE_SITE_KEY = "1x00000000000000000000AA";
+  process.env.TURNSTILE_SECRET_KEY = "1x0000000000000000000000000000000AA";
+  process.env.TURNSTILE_EXPECTED_HOSTNAME = "127.0.0.1";
+  const config = serverConfig();
+  assert.equal(publicConfig(config).localTestMode, true);
+  globalThis.fetch = async () => new Response(JSON.stringify({ success: true, hostname: "example.com", metadata: { result_with_testing_key: true } }), { status: 200 });
+  try {
+    assert.equal(await verifyTurnstile("XXXX.DUMMY.TOKEN.XXXX", "127.0.0.1", config), true);
+    assert.equal(await verifyTurnstile("invalid", "127.0.0.1", config), false);
+    assert.equal(await verifyTurnstile("XXXX.DUMMY.TOKEN.XXXX", "203.0.113.1", config), false);
+    Reflect.set(process.env, "NODE_ENV", "production");
+    assert.equal(publicConfig(config).localTestMode, false);
+    assert.equal(await verifyTurnstile("XXXX.DUMMY.TOKEN.XXXX", "127.0.0.1", config), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (priorNodeEnv === undefined) Reflect.deleteProperty(process.env, "NODE_ENV"); else Reflect.set(process.env, "NODE_ENV", priorNodeEnv);
+    if (priorLocalFlag === undefined) delete process.env.KANABCO_LOCAL_TURNSTILE_TEST; else process.env.KANABCO_LOCAL_TURNSTILE_TEST = priorLocalFlag;
   }
 });
 

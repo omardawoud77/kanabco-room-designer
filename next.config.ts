@@ -4,6 +4,8 @@ const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
   reactStrictMode: true,
+  agentRules: false,
+  devIndicators: false,
   turbopack: { root: process.cwd() },
   async headers() {
     const csp = [

@@ -50,6 +50,15 @@ const PROJECT_TYPES: { id: ProjectType; name: string; description: string; defau
   { id: "kitchen", name: "Kitchen", description: "A new cabinet and finish concept", defaultMaterial: "wood" },
 ];
 
+const CATEGORY_CARDS: { id: ProjectType; image: string; label: string; detail: string; catalog: boolean }[] = [
+  { id: "sofa", image: "/brand/sofa-room.webp", label: "Sofas", detail: "Explore a sofa shape and placement for your room.", catalog: true },
+  { id: "bed", image: "/concepts/bed.webp", label: "Beds & headboards", detail: "Imagine a softer bedroom with a new focal point.", catalog: false },
+  { id: "wardrobe", image: "/concepts/wardrobe.webp", label: "Wardrobes", detail: "See a storage direction for your space.", catalog: false },
+  { id: "dresser", image: "/concepts/dresser.webp", label: "Dressers", detail: "Try a considered vanity or storage idea.", catalog: false },
+  { id: "dressing-room", image: "/concepts/dressing-room.webp", label: "Dressing rooms", detail: "Picture an organised room with a new layout.", catalog: false },
+  { id: "kitchen", image: "/concepts/kitchen.webp", label: "Kitchens", detail: "Explore a cabinet and finish concept.", catalog: false },
+];
+
 const MATERIALS: { id: Material; name: string }[] = [
   { id: "upholstery", name: "Upholstery" },
   { id: "wood", name: "Wood" },
@@ -154,6 +163,7 @@ export default function Home() {
   const [catalog, setCatalog] = useState<CatalogProduct[]>([]);
   const [catalogLoaded, setCatalogLoaded] = useState(false);
   const [siteKey, setSiteKey] = useState("");
+  const [localTestMode, setLocalTestMode] = useState(false);
   const [setupError, setSetupError] = useState("");
   const [catalogError, setCatalogError] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
@@ -179,10 +189,13 @@ export default function Home() {
       .then(async (configResponse) => {
         if (!configResponse.ok) throw new Error("Setup unavailable");
         const config: unknown = await configResponse.json();
-        if (!config || typeof config !== "object" || typeof (config as { turnstileSiteKey?: unknown }).turnstileSiteKey !== "string" || !(config as { turnstileSiteKey: string }).turnstileSiteKey) {
+        if (!config || typeof config !== "object" || typeof (config as { turnstileSiteKey?: unknown }).turnstileSiteKey !== "string" || !(config as { turnstileSiteKey: string }).turnstileSiteKey || typeof (config as { localTestMode?: unknown }).localTestMode !== "boolean") {
           throw new Error("Invalid config");
         }
-        if (active) setSiteKey((config as { turnstileSiteKey: string }).turnstileSiteKey);
+        if (active) {
+          setSiteKey((config as { turnstileSiteKey: string }).turnstileSiteKey);
+          setLocalTestMode((config as { localTestMode: boolean }).localTestMode);
+        }
       })
       .catch(() => {
         if (active) setSetupError("The design studio is unavailable right now. Please refresh later.");
@@ -271,6 +284,11 @@ export default function Home() {
     setResult(null);
   }
 
+  function chooseCategory(id: ProjectType) {
+    chooseProject(id);
+    document.getElementById("studio")?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  }
+
   function chooseProduct(id: string) {
     setProductId(id);
     setResult(null);
@@ -330,46 +348,64 @@ export default function Home() {
       <header className="site-header">
         <div className="shell header-inner">
           <a className="brand" href="https://kanabco.net" aria-label="Kanabco home">
-            <span>kanabco</span><span className="brand-dot">·</span><strong>custom</strong>
+            <img src="/brand/kanabco-logo.png" alt="" /><span className="brand-divider" aria-hidden="true" /><strong>custom</strong>
           </a>
           <nav aria-label="Main navigation">
             <a href="https://kanabco.net">Products</a>
-            <a className="nav-active" href="#studio" aria-current="page">Room Designer</a>
+            <a href="https://kanabco.net/about">Our Story</a>
+            <a className="nav-active" href="#studio" aria-current="page">Customization</a>
+            <a href="https://kanabco.net/#contact-cta">Contact</a>
           </nav>
         </div>
       </header>
 
       <section className="hero shell" aria-labelledby="hero-title">
         <div className="hero-copy">
-          <span className="eyebrow">KANABCO · CUSTOM STUDIO</span>
-          <h1 id="hero-title">Imagine what your<br />space could be<span>.</span></h1>
-          <p>Upload a photo and explore a sofa, bedroom, storage, dressing room, or kitchen idea in your space. Choose a look and see one AI design concept.</p>
-          <a href="#studio" className="button button-primary">Design my room <Icon kind="arrow" /></a>
-          <p className="hero-note">Visual inspiration only · Ask Kanabco what can be made and quoted</p>
+          <span className="eyebrow">NEW · ROOM DESIGN STUDIO</span>
+          <h1 id="hero-title">Your space.<br />Your vision.<br /><span>Imagined with Kanabco.</span></h1>
+          <p>Share a photo of your room and explore what a sofa, bed, wardrobe or kitchen could look like in it. Choose a style and materials, then see one AI design concept made around your space.</p>
+          <a href="#categories" className="button button-primary">Start customizing <Icon kind="arrow" /></a>
+          <p className="hero-note">Visual inspiration · A specialist confirms what can be made and quoted</p>
         </div>
-        <div className="hero-art" aria-label="Illustration of a neutral living room with a sofa" role="img">
-          <div className="art-wall" />
-          <div className="art-frame art-frame-one" />
-          <div className="art-frame art-frame-two" />
-          <div className="art-plant"><span /><span /><span /></div>
-          <div className="art-sofa"><i /><b /><b /><i /></div>
-          <div className="art-table" />
-          <div className="art-rug" />
-          <span className="art-caption">A room worth imagining in</span>
+        <div className="hero-art">
+          <img src="/brand/sofa-room.webp" alt="A cream Kanabco sofa from the current collection" />
+          <span className="art-caption">The starting point is yours</span>
         </div>
       </section>
 
       <section className="steps shell" aria-label="How it works">
-        <div><span>01</span><strong>Share your space</strong><small>One clear room photo</small></div>
-        <div><span>02</span><strong>Choose a project</strong><small>Sofa, bed, storage, or kitchen</small></div>
-        <div><span>03</span><strong>Explore a concept</strong><small>Ask an advisor what is possible</small></div>
+        <div><span>01</span><strong>Choose an idea</strong><small>Pick what you want to explore</small></div>
+        <div><span>02</span><strong>Share a photo</strong><small>Show us your real room</small></div>
+        <div><span>03</span><strong>Make it yours</strong><small>Choose style, colour and material</small></div>
+        <div><span>04</span><strong>See your concept</strong><small>Discuss it with a specialist</small></div>
+      </section>
+
+      <section className="categories shell" id="categories" aria-labelledby="categories-title">
+        <div className="section-heading category-heading">
+          <span className="eyebrow">A PLACE TO START</span>
+          <h2 id="categories-title">What could we imagine for you?</h2>
+          <p>Choose a direction, then show us your room. Sofas can use a Kanabco catalog reference. Beds, kitchens and other spaces are exploratory ideas until a specialist confirms what is available.</p>
+        </div>
+        <div className="category-grid">
+          {CATEGORY_CARDS.map((item) => (
+            <button key={item.id} className={`category-card ${projectType === item.id ? "category-selected" : ""}`} type="button" onClick={() => chooseCategory(item.id)} aria-label={`Explore ${item.label}`}>
+              <span className={`category-image category-${item.id}`}><img src={item.image} alt="" loading="lazy" /></span>
+              <span className="category-body">
+                <span className="category-meta">{item.catalog ? "KANABCO SOFA REFERENCE AVAILABLE" : "EXPLORATORY CONCEPT"}</span>
+                <strong>{item.label}</strong>
+                <small>{item.detail}</small>
+                <span className="category-action">Explore this idea <span aria-hidden="true">→</span></span>
+              </span>
+            </button>
+          ))}
+        </div>
       </section>
 
       <section className="studio shell" id="studio" tabIndex={-1} aria-labelledby="studio-title">
         <div className="section-heading">
-          <span className="eyebrow">YOUR ROOM, YOUR RULES</span>
-          <h2 id="studio-title">Make a space feel yours.</h2>
-          <p>Start with a real photo. Choose what you want to explore and a material direction. New categories are design ideas; an advisor will confirm whether Kanabco can make them.</p>
+          <span className="eyebrow">SHOW US YOUR SPACE</span>
+          <h2 id="studio-title">Now make it yours.</h2>
+          <p>Use a clear room photo, choose your favourite direction and create one visual concept. The result is a conversation starter for the Kanabco team.</p>
         </div>
 
         <form onSubmit={submit} className="studio-grid" aria-busy={submitting}>
@@ -466,7 +502,7 @@ export default function Home() {
             </fieldset>
 
             <div className="submit-section">
-              {siteKey && <Turnstile siteKey={siteKey} onTokenChange={setTurnstileToken} resetNonce={resetNonce} />}
+              {siteKey && <Turnstile siteKey={siteKey} localTestMode={localTestMode} onTokenChange={setTurnstileToken} resetNonce={resetNonce} />}
               <button className="button button-primary submit-button" type="submit" disabled={!canSubmit} aria-describedby="submit-help">
                 {submitting ? "Creating your concept…" : "Create my room concept"} {!submitting && <Icon kind="arrow" />}
               </button>
@@ -514,7 +550,7 @@ export default function Home() {
         <p>Use the preview to explain what you love. Ask a Kanabco specialist whether the project is offered, what can be made, and how it would be measured and quoted.</p>
       </section>
 
-      <footer className="site-footer"><div className="shell"><span>kanabco · custom</span><p>AI concepts are visual inspiration. They do not confirm that Kanabco offers a category or can make the pictured design.</p></div></footer>
+      <footer className="site-footer"><div className="shell"><div className="footer-brand"><img src="/brand/kanabco-logo-white.png" alt="Kanabco" /><span>room designer</span></div><p>AI concepts are visual inspiration. They do not confirm that Kanabco offers a category or can make the pictured design.</p></div></footer>
     </main>
   );
 }

@@ -26,24 +26,27 @@ declare global {
 
 type Props = {
   siteKey: string;
+  localTestMode: boolean;
   onTokenChange: (token: string | null) => void;
   resetNonce: number;
 };
 
 const SCRIPT_URL = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
 
-export function Turnstile({ siteKey, onTokenChange, resetNonce }: Props) {
+export function Turnstile({ siteKey, localTestMode, onTokenChange, resetNonce }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | null>(null);
   const callbackRef = useRef(onTokenChange);
   const [failed, setFailed] = useState(false);
+  const [localTestReady, setLocalTestReady] = useState(false);
+  const showLocalTestMode = process.env.NODE_ENV === "development" && localTestMode && siteKey === "1x00000000000000000000AA";
 
   useEffect(() => {
     callbackRef.current = onTokenChange;
   }, [onTokenChange]);
 
   useEffect(() => {
-    if (!siteKey) return;
+    if (!siteKey || showLocalTestMode) return;
     let cancelled = false;
     let script: HTMLScriptElement | null = null;
     setFailed(false);
@@ -98,22 +101,31 @@ export function Turnstile({ siteKey, onTokenChange, resetNonce }: Props) {
         widgetIdRef.current = null;
       }
     };
-  }, [siteKey]);
+  }, [siteKey, showLocalTestMode]);
 
   useEffect(() => {
     if (resetNonce > 0 && widgetIdRef.current && window.turnstile) {
       window.turnstile.reset(widgetIdRef.current);
       callbackRef.current(null);
     }
+    if (resetNonce > 0) setLocalTestReady(false);
   }, [resetNonce]);
 
   return (
     <div className="turnstile-control">
-      <div ref={hostRef} aria-label="Security verification" />
+      {!showLocalTestMode && <div ref={hostRef} aria-label="Security verification" />}
       {failed && (
         <p role="alert" className="field-error">
           Verification could not load. Check your connection and refresh the page.
         </p>
+      )}
+      {showLocalTestMode && (
+        <div className="local-test-control">
+          <button type="button" onClick={() => { callbackRef.current("XXXX.DUMMY.TOKEN.XXXX"); setLocalTestReady(true); setFailed(false); }}>
+            Use local test verification
+          </button>
+          <span role="status">{localTestReady ? "Test token ready for one local request." : "Development only · Cloudflare test keys"}</span>
+        </div>
       )}
     </div>
   );

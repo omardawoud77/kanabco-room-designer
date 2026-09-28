@@ -39,8 +39,8 @@ export function featureEnabled(): boolean {
   return process.env.AI_FEATURE_ENABLED === "true";
 }
 
-export function publicConfig() {
-  return { turnstileSiteKey: required("TURNSTILE_SITE_KEY") };
+export function publicConfig(config: ServerConfig) {
+  return { turnstileSiteKey: config.turnstileSiteKey, localTestMode: isLocalTurnstileTestConfig(config) };
 }
 
 export function serverConfig() {
@@ -92,3 +92,11 @@ export function serverConfig() {
 }
 
 export type ServerConfig = ReturnType<typeof serverConfig>;
+
+export function isLocalTurnstileTestConfig(config: ServerConfig): boolean {
+  return process.env.NODE_ENV === "development" &&
+    process.env.KANABCO_LOCAL_TURNSTILE_TEST === "true" &&
+    config.allowedOrigin.startsWith("http://127.0.0.1:") &&
+    config.turnstileSiteKey === "1x00000000000000000000AA" &&
+    config.turnstileSecretKey === "1x0000000000000000000000000000000AA";
+}

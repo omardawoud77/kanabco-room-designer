@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 export async function GET(request: NextRequest) {
   try {
     const config = serverConfig();
-    const response = NextResponse.json(publicConfig(), { headers: { "Cache-Control": "no-store" } });
+    const response = NextResponse.json(publicConfig(config), { headers: { "Cache-Control": "no-store" } });
     if (!readSession(request, config)) {
       const cookie = newSessionCookie(config);
       response.cookies.set(cookie.name, cookie.value, cookie.options);

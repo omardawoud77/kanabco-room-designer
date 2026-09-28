@@ -1,6 +1,6 @@
 # Kanabco Room Designer — developer handoff
 
-**Status:** Standalone Next.js App Router implementation for the development team to integrate. One local OpenAI image edit has passed against the dedicated Kanabco project. It has not been deployed or connected to Kanabco's live chatbot, price database, Cloudflare account, or Upstash account. Keep `AI_FEATURE_ENABLED=false` until the launch checks below pass. Start with the [forwardable team message](SEND-TO-DEVS.md), then use the [integration brief](HANDOFF.md) for product decisions.
+**Status:** Standalone Next.js App Router implementation for the development team to integrate. Two image edits passed through the protected local API with Cloudflare's development test keys and disposable Redis, in addition to the earlier direct provider smoke test. The dedicated OpenAI key is stored only in the gitignored local environment, and the local service is bound to loopback; project IP allowlisting remains a production task. The feature has not been deployed or connected to Kanabco's live chatbot, price database, Cloudflare WAF/production Turnstile, or Upstash account. Keep `AI_FEATURE_ENABLED=false` in public deployment until the launch checks below pass. Start with the [forwardable team message](SEND-TO-DEVS.md), then use the [integration brief](HANDOFF.md) for product decisions.
 
 The visitor uploads one room photo and chooses a concept category: sofa, bed and headboard, wardrobe, dresser, dressing room, or kitchen. They select a style, color, and material direction, complete Turnstile, and receive one AI-generated concept image. A sofa project may optionally use one of two local Kanabco sofa references. Every other category is a **custom-project idea**, even if Kanabco does not currently sell or make it. The generated image is an illustration, not a quote, measured plan, existing product, or promise that Kanabco can manufacture or install it. The team must verify the two sofa references before launch. All generated projects have `priceEgp: null`; a specialist must confirm feasibility and give any quote.
 
@@ -26,6 +26,7 @@ The browser never calls OpenAI or receives the API key. The sole paid image requ
 | Path | Purpose |
 | --- | --- |
 | `src/app/page.tsx`, `src/components/Turnstile.tsx` | Six concept categories, optional sofa reference, constrained style/color/material choices, Turnstile, disabled submit while in flight, comparison, download and advisor link. |
+| `public/brand/`, `public/concepts/`, `public/fonts/` | Official Kanabco logo and sofa imagery, five generated concept-card images, and locally hosted Lato with its license. Concept images are not catalog media. |
 | `src/app/api/room-design/route.ts` | Protected multipart API with the 13 ordered gates below. |
 | `src/lib/redis-guards.ts` | Atomic Redis replay cache, concurrency slots, rolling request limits, daily dollar reservations and settlement. |
 | `src/lib/images.ts` | MIME signature check, pixel/byte limits, decoding, EXIF removal, and safe JPEG output. |
@@ -37,12 +38,13 @@ The browser never calls OpenAI or receives the API key. The sole paid image requ
 | `tests/gateway.test.ts` | Rejects unsafe AI Gateway URLs and checks separation of OpenAI and Cloudflare credentials. |
 | `tests/redis-guards.integration.test.ts` | Runs the production Lua guards against an isolated real Redis 7 container. |
 | `.github/workflows/ci.yml` | Typecheck, tests, isolated Redis guard integration, and production build on GitHub pushes and pull requests. |
-| `demo/index.html`, `demo/*.png`, `demo/paid-kitchen-concept.jpg` | Offline fictional comparison plus one actual API test image for review. The demo page makes no API calls and contains no credentials. |
+| `demo/index.html`, `demo/*.png`, `demo/paid-local-e2e-concept.jpg` | Offline fictional comparison plus the protected-route image result for review. The demo page makes no API calls and contains no credentials. |
 | `scripts/paid-smoke.ts` | Explicit one-attempt provider smoke test using the fictional kitchen photo. It does not exercise the public API guards. |
+| `scripts/local-e2e/` | Loopback-only edge proxy and Redis REST adapter for end-to-end developer tests without weakening the production route. |
 
 ### Offline visual demo
 
-Open `demo/index.html` in a browser and drag the comparison control. The comparison uses two fictional images created with the built-in imagegen tool; a separate panel shows the one real API smoke result from the same fictional room. The static page does not call this application, OpenAI, Turnstile, or Redis. It illustrates the concept experience and one provider output; it does **not** prove consistent model quality, Kanabco's manufacturing ability, or a price. `demo/README.md` records the presentation-image prompts. The real protected flow remains behind `/api/room-design`.
+Open `demo/index.html` in a browser and drag the comparison control. The comparison uses two fictional images created with the built-in imagegen tool; a separate panel shows the real protected-route API result from the same fictional room. The static page does not call this application, OpenAI, Turnstile, or Redis. It illustrates the concept experience and one provider output; it does **not** prove consistent model quality, Kanabco's manufacturing ability, or a price. `demo/README.md` records the presentation-image prompts. The real protected flow remains behind `/api/room-design`.
 
 ### Product behavior and API shape
 
@@ -62,17 +64,17 @@ The response describes a `project` with `type`, `label`, `source` (`custom-conce
 8. Per-session and global daily USD reservations, using a code-enforced minimum reservation of $1 for each admitted image call.
 9. Project/material allowlists, optional sofa product allowlist, image byte/signature/pixel checks, EXIF stripping, bounded room width, and 10-minute exact-repeat rejection.
 10. OpenAI Moderations on the photo and server-built prompt; failure closes the route. Image moderation covers supported categories, not every private or unsafe detail in a photo.
-11. One server-chosen `gpt-image-2.5-flare-2026-09-08` edit from the room photo and optional sofa reference: one output, low quality, 1024×1024 JPEG, no tools or retries.
+11. One server-chosen `gpt-image-2.5-flare-2026-09-08` edit from the room photo and optional sofa reference: one output, low quality, approximately 1 MP in the source orientation, JPEG, no tools or retries.
 12. Record reported image/text tokens, estimate cost from the dated model's current rates, keep at least the reserved $1 charged against the application quota, and emit `SPEND_SPIKE` from the separate estimated-spend counter when its threshold is crossed. The response must include nonnegative integer `usage.input_tokens_details.image_tokens`, `usage.input_tokens_details.text_tokens`, and `usage.output_tokens`. If any field is missing, atomically stop new image calls until the next UTC day.
 13. Re-encode pixels and return JSON with a plain disclaimer and a `project` object. Only a selected sofa reference may add product metadata; no response claims a price or availability. React renders text; no raw model HTML is inserted.
 
-Any guard-store, Turnstile, moderation, or config failure blocks the image call. OpenAI moderation itself may run at step 10, but the expensive image edit does not. There is no queue: a full concurrency bucket returns 429.
+Any guard-store, Turnstile, moderation, or config failure before step 11 blocks the image call. OpenAI moderation itself may run at step 10, but the image edit does not. A quota-store failure during settlement after step 11 can return 503 even though the image edit was billed; the `UNSETTLED_IMAGE_ATTEMPT` log flags that case. There is no queue: a full concurrency bucket returns 429.
 
 ## Set up locally
 
 1. Use Node.js 20 or newer. Run `npm ci`.
-2. Copy `.env.example` to `.env.local`; fill only with **test** credentials and a test Turnstile hostname. Use two different random 32+ character secrets for `SESSION_SIGNING_KEY` and `AI_EDGE_SHARED_SECRET`.
-3. Configure the edge header injection and trusted client-IP header described below. Even local API requests require the edge secret, so a normal local page cannot call the photo endpoint until a trusted local reverse proxy injects it. Do not put the edge secret into browser code to make local testing easier.
+2. Copy `.env.example` to `.env.local`; fill it with a dedicated **test project** key and the loopback settings in [`scripts/local-e2e/README.md`](scripts/local-e2e/README.md). Use different random 32+ character secrets for `SESSION_SIGNING_KEY`, `AI_EDGE_SHARED_SECRET`, and the local Redis REST token.
+3. Run the documented loopback edge proxy and disposable Redis adapter. Even local API requests require the edge secret; the proxy injects it. Do not put that secret into browser code.
 4. Run `npm run typecheck`, `npm test`, and `npm run build`. The included GitHub Actions workflow also runs the Redis Lua tests in an isolated container; provider and infrastructure checks still require staging.
 5. After infrastructure and live integration checks pass, set `AI_FEATURE_ENABLED=true` in server environment configuration. Set it back to `false` to disable image calls. A hosting platform may need to restart or refresh functions after an environment change; the application code does not need to change.
 
@@ -86,13 +88,15 @@ KANABCO_REDIS_TEST_CONTAINER=kanabco-redis-test node --import tsx --test tests/r
 docker rm -f kanabco-redis-test
 ```
 
-### One paid provider smoke test — completed locally
+### Paid local tests — completed
 
 On 28 September 2026, the owner bought $10 in organization-level prepaid API credits, turned auto-reload off, and set an enforced $50 monthly spend limit on the dedicated Kanabco project. Alerts are set at 50% ($25), 80% ($40), 95% ($47.50), plus the default 100% ($50). A restricted, user-owned project key named **Kanabco Website Server** permits only Images Request and Moderations Request. It has no expiry and is stored only in the gitignored, mode-600 `.env.local`; do not copy it into the handoff or send it to the team. Project IP allowlisting awaits the deployment server's known egress IP.
 
-The test used `gpt-image-2.5-flare-2026-09-08` and the fictional kitchen photo. It saved `work/local-test/paid-kitchen-concept.jpg` locally; a copy at `demo/paid-kitchen-concept.jpg` is included for team review. This is an actual API smoke result, distinct from the offline presentation image `demo/kitchen-after.png`. The paid output made the window smaller and changed parts of the room geometry, so it proves provider connectivity but **does not pass photo-fidelity acceptance**. The response reported 1,452 image input tokens, 238 text input tokens, and 196 output tokens. The server-side estimated provider cost was **about $0.02**. The first attempt stopped before any provider call because sandbox DNS was blocked. Its one-shot lock was cleared only after confirming no image edit occurred; a second call outside that sandbox succeeded exactly once.
+The first direct provider smoke test used `gpt-image-2.5-flare-2026-09-08` and a fictional kitchen photo. Its copy is `demo/paid-kitchen-concept.jpg`; the output changed the window and part of the room geometry, so it proved provider connectivity but did not pass the photo-fidelity criterion. Reported usage was 1,452 image input tokens, 238 text input tokens, and 196 output tokens, estimated at about $0.02.
 
-After that paid test, the server request was changed to choose an approximately 1 MP output size that follows the normalized room photo's aspect ratio, and the prompt now explicitly protects the full frame and exact window, door, wall, and fixture geometry. Inputs outside the provider's 1:3–3:1 aspect range are rejected before the paid call. [OpenAI documents custom image sizes](https://developers.openai.com/api/docs/guides/image-generation) for GPT Image 2.5, but **this revised request has not had a paid provider test**. Staging must confirm the provider accepts the chosen dimensions and that real edits preserve architecture before launch; the earlier square-image smoke result cannot establish either.
+The server was then revised to request an approximately 1 MP output matching the normalized photo's orientation and to protect permanent geometry in the prompt. Two paid edits passed through the local proxy, real Redis guards, Cloudflare's **development test** Siteverify, moderation, and the protected API route. Each reported about 1,775 input tokens and 144 output tokens, estimated at about $0.02. The second result is `demo/paid-local-e2e-concept.jpg` and broadly preserves the doorway and window proportions on visual inspection. It still requires representative staging tests across all six categories, including a sofa reference. Inputs outside the provider's 1:3–3:1 aspect range fail before any paid call.
+
+The first protected-route edit occurred during a negative test because Cloudflare's always-pass test secret accepted a non-dummy token in practice. The **development-only** verifier now requires the exact official dummy token before calling Siteverify; a repeat invalid-token request returned 403 with zero image tokens. Production continues to require the real hostname and `room_design` action. The local test used a command-line multipart POST through the browser-facing proxy. The in-app browser upload and photo preview passed, but its real Turnstile widget returned client error `300030`; a full browser submit and result remain to be checked. The developer-only UI provides a button for the official dummy token on loopback. The local test harness and exact steps are in [`scripts/local-e2e/README.md`](scripts/local-e2e/README.md). It uses no mock OpenAI response or in-memory quota substitute.
 
 For a separately authorized future smoke test with a separate test project and hard limit, this is the one-attempt command:
 
@@ -100,7 +104,7 @@ For a separately authorized future smoke test with a separate test project and h
 PAID_SMOKE_CONFIRM=one-generation node --import tsx scripts/paid-smoke.ts
 ```
 
-The script moderates the fictional `demo/kitchen-before.png`, then makes at most one Images Edit call with fixed kitchen settings. It prints only usage and an approximate cost, and saves the normalized result to the gitignored path above. A one-shot lock prevents an accidental repeat; if it stops after the edit begins, check OpenAI project usage before deciding whether to retry. The completed direct provider test does **not** prove Turnstile, Cloudflare, Redis, the browser upload, or the public route are configured; those remain staging integration checks. `AI_FEATURE_ENABLED=false` remains in place for the public route.
+The one-attempt script is retained for a separately authorized future provider check. It does not exercise the protected route. The loopback test mode must never be deployed publicly; keep `AI_FEATURE_ENABLED=false` in the production environment until the real Cloudflare and Upstash setup passes staging acceptance.
 
 ## Environment variables
 
@@ -116,6 +120,7 @@ Copy `.env.example` and use exact values for the deployment. Every credential fi
 | `TURNSTILE_SITE_KEY` | Public widget key; the only Turnstile value sent to the browser. |
 | `TURNSTILE_SECRET_KEY` | Server-only siteverify secret. |
 | `TURNSTILE_EXPECTED_HOSTNAME` | `custom.kanabco.net`; must match siteverify response. |
+| `KANABCO_LOCAL_TURNSTILE_TEST` | `false` in deployment. `true` is accepted only with exact Cloudflare dummy keys, `NODE_ENV=development`, loopback origin, and loopback client IP; the server still calls Siteverify and the Redis replay cache. |
 | `OPENAI_API_KEY` | Project-scoped server-only key; never use `NEXT_PUBLIC_`, `VITE_`, or another public prefix. |
 | `OPENAI_IMAGE_MODEL` | Only `gpt-image-2.5-flare-2026-09-08` is accepted for this anonymous route. |
 | `OPENAI_IMAGE_TIMEOUT_MS` | `150000`, maximum `180000`; image edits can take longer than text chat. The route has a 240-second host duration. |
@@ -164,10 +169,11 @@ The optional AI Gateway applies only to the image edit; the moderation request g
 | Flag off or config missing | Temporary unavailability (503) | No |
 | Bad origin/edge header/content type, oversized body, malformed fields | Generic verification or size error (403/415/413/400) | No |
 | Invalid/reused/expired Turnstile token | Verification error (403) | No |
-| Redis down, quota store unavailable | Temporary unavailability (503) | No |
+| Redis down or quota store unavailable before the image edit | Temporary unavailability (503) | No |
 | Concurrency, request, repeat, dollar cap, or unknown-usage daily breaker | Busy/free-limit message (429, `Retry-After` where known) | No |
 | Invalid image, category/material choice, sofa reference, or moderation rejection | Generic validation/verification error | No |
 | OpenAI image timeout/failure after call starts | Temporary unavailability (503) | **May have been called and billed** |
+| Quota-store settlement fails after a successful image edit | Temporary unavailability (503); `UNSETTLED_IMAGE_ATTEMPT` log | **Yes; may have been billed** |
 | Valid result | Before/after concept view, download, advisor link | Yes, once |
 
 Moderation failures are deliberately generic. The API does not return provider stack traces, key fragments, or quota internals. Automated photo moderation covers its supported categories and cannot guarantee detection of every private detail, unsafe image, or impractical design. Every attempt is logged with time, route, masked IP, hashed session, input character and image byte counts, model, token counts when available, approximate USD cents, Turnstile result, reason and latency. Full visitor photos and text are not retained by this package; browser preview URLs are local to the page session. OpenAI receives the photo for processing under the project's API data controls. Set log retention and the public privacy notice with the team's privacy policy.
