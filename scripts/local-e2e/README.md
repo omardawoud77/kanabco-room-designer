@@ -11,6 +11,8 @@ These two scripts make the existing protected route testable on one Mac. They ar
 
 Cloudflare's public testing pair is sitekey `1x00000000000000000000AA` and secret `1x0000000000000000000000000000000AA`. A live Siteverify probe returned `success: true`, `hostname: "example.com"`, a test-key marker, and no `action`. The route accepts this response only with `KANABCO_LOCAL_TURNSTILE_TEST=true`, exact dummy keys and token `XXXX.DUMMY.TOKEN.XXXX`, `NODE_ENV=development`, a loopback `ALLOWED_ORIGIN`, and a loopback trusted client IP. Production still requires the configured hostname and `room_design` action. Do not deploy the dummy pair. See [Cloudflare's test-key documentation](https://developers.cloudflare.com/turnstile/troubleshooting/testing/).
 
+Next.js development uses React debugging code that requires `unsafe-eval`; the app's CSP allows it only while `NODE_ENV=development`. The production CSP remains strict. Restart Next.js and reload the browser tab after changing this configuration.
+
 ## Run
 
 1. Put local-only values in `.env.local` without changing the production defaults in `.env.example`:

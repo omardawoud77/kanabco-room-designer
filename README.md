@@ -78,6 +78,8 @@ Any guard-store, Turnstile, moderation, or config failure before step 11 blocks 
 4. Run `npm run typecheck`, `npm test`, and `npm run build`. The included GitHub Actions workflow also runs the Redis Lua tests in an isolated container; provider and infrastructure checks still require staging.
 5. After infrastructure and live integration checks pass, set `AI_FEATURE_ENABLED=true` in server environment configuration. Set it back to `false` to disable image calls. A hosting platform may need to restart or refresh functions after an environment change; the application code does not need to change.
 
+The loopback development server permits `unsafe-eval` in its Content Security Policy because React uses it for development debugging. The production build omits it. If an already open preview tab reports an `eval()` console error after a configuration change, restart Next.js and reload that tab; the production policy is not relaxed.
+
 `/api/config` issues a signed `HttpOnly`, `Secure` in production, `SameSite=Lax` cookie. `/api/catalog` exposes only optional sofa-reference metadata. `/api/room-design` requires the cookie and a fresh Turnstile token. The UI sends multipart data containing only the allowed fields above; it cannot set the OpenAI body. A selected sofa image is loaded from the server's own catalog, never from a visitor URL. For the other five categories, the customer's room photo is the only input image. Style, color, and material are visual directions, not an approved manufacturing specification.
 
 To run the atomic Redis guards locally, use a **disposable** Redis 7 container from the package directory. The integration test calls `FLUSHDB` inside that container and refuses names that do not begin `kanabco-redis-test`:

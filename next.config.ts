@@ -8,9 +8,12 @@ const nextConfig: NextConfig = {
   devIndicators: false,
   turbopack: { root: process.cwd() },
   async headers() {
+    const scriptSource = process.env.NODE_ENV === "development"
+      ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com"
+      : "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com";
     const csp = [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com",
+      scriptSource,
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob:",
       "connect-src 'self' https://challenges.cloudflare.com",
