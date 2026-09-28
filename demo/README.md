@@ -4,6 +4,8 @@ Open `index.html` in a local browser. It is a standalone visual walkthrough: no 
 
 The before and after PNGs were created with Codex's built-in imagegen tool from fictional imagery. They are **not** a Kanabco product, a production API result, an existing customer room, or a technical kitchen plan. The result intentionally preserves the room angle and major architecture while illustrating a cabinet and finish direction. Generated details must be checked by a specialist.
 
+`paid-kitchen-concept.jpg` is a separate result from one successful OpenAI Images Edit API call against the same fictional before image during local testing. It is shown beneath the interactive comparison. The static demo itself still makes no API request. The paid result makes the window smaller and changes parts of the room geometry; it is not a faithful renovation preview, measured kitchen design, existing Kanabco product, or approved quote.
+
 ## Generation prompts
 
 **Before:** “Use case: photorealistic-natural. Asset type: fictional sample room photo for a developer demonstration of a room-customization website. Generate a realistic, ordinary, empty kitchen-sized room in an Egyptian apartment, viewed from a fixed wide camera angle at adult eye level. Keep it modest and believable: warm off-white plaster walls, beige ceramic tile floor, one large rectangular window on the back wall with daylight, a door opening on the left, simple ceiling light, clean empty walls, no cabinetry, no furniture, no people. Landscape composition with the whole room visible; neutral natural daylight; no logos, brands, signs, text, or watermark. This is the BEFORE image, so do not add a finished kitchen.”

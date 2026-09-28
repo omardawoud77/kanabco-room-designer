@@ -1,4 +1,5 @@
 import sharp from "sharp";
+import { roomImageOutputSize } from "./image-output-size";
 
 export class InvalidImageError extends Error {}
 
@@ -18,6 +19,7 @@ export async function normalizeUploadedImage(file: File, maxBytes: number, maxPi
     const metadata = await decoder.metadata();
     if (!metadata.width || !metadata.height || metadata.width < 320 || metadata.height < 320) throw new InvalidImageError();
     if (!metadata.format || !["jpeg", "png", "webp"].includes(metadata.format) || (metadata.pages ?? 1) > 1) throw new InvalidImageError();
+    roomImageOutputSize(metadata.width, metadata.height);
     return await decoder.rotate().resize(1536, 1536, { fit: "inside", withoutEnlargement: true }).flatten({ background: "#ffffff" }).jpeg({ quality: 82, mozjpeg: true }).toBuffer();
   } catch {
     throw new InvalidImageError();

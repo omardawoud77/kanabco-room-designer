@@ -24,7 +24,7 @@ export function buildRoomPrompt(input: {
     : `Visualize ${project.brief}. This is a new custom-project idea, not an existing Kanabco catalog product. Do not imply it is available for purchase or has an approved price.`;
   return [
     `Create one realistic interior-design concept for a possible ${project.label.toLowerCase()} project. Image 1 is the customer's room.`,
-    "Preserve the room's camera angle, walls, windows, doors, floor, ceiling and fixed architecture. Do not invent major architectural changes.",
+    "Edit Image 1 in place and keep its full original framing, camera position, perspective, horizon, and room proportions. Do not crop, extend, rotate, zoom, or recompose the photo. Preserve the exact visible placement, size, and shape of every wall, window, door, structural opening, column, floor boundary, ceiling line, and fixed plumbing or electrical fixture. Never move, shrink, cover, remove, or invent a window or door. Add furnishings, cabinetry, decor, and finishes only within those existing architectural bounds; keep their scale realistic.",
     focalPiece,
     `Concept color: ${CONCEPT_COLORS[input.color]}. Material direction: ${CONCEPT_MATERIALS[input.material]}. Style: ${STYLE_BRIEFS[input.style]}. These are visual preferences only, not confirmed manufacturing choices. Add modest complementary decor where appropriate.`,
     "Use realistic scale and circulation. For kitchens and built-in storage, do not imply that utilities, structure, ventilation, access, or building rules have been assessed. Do not add logos, text, watermarks, people, or brand claims. Do not depict decor as a Kanabco product.",

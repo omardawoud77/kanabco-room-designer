@@ -35,7 +35,12 @@
     .step strong { display:block; font-size:14px; }
     .step small { display:block; color:#77706a; line-height:1.5; margin-top:4px; }
     .notice { margin-top:26px; padding:18px 20px; border-radius:12px; background:#fff2e9; color:#684434; font-size:14px; line-height:1.6; }
-    @media(max-width:680px) { header { margin-bottom:30px; } .tag { font-size:10px; } .flow { grid-template-columns:repeat(2,minmax(0,1fr)); } .controls { flex-wrap:wrap; } .controls input { width:100%; flex:auto; } }
+    .paid-result { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:24px; align-items:center; }
+    .paid-result img { display:block; width:100%; border-radius:13px; }
+    .paid-result h2 { margin:8px 0 12px; font-size:clamp(24px,3vw,36px); letter-spacing:-.05em; }
+    .paid-result p { line-height:1.6; color:#6c6a68; }
+    .paid-result .eyebrow { margin:0; }
+    @media(max-width:680px) { header { margin-bottom:30px; } .tag { font-size:10px; } .flow { grid-template-columns:repeat(2,minmax(0,1fr)); } .controls { flex-wrap:wrap; } .controls input { width:100%; flex:auto; } .paid-result { grid-template-columns:1fr; } }
   </style>
 </head>
 <body>
@@ -64,7 +69,16 @@
       <div class="step"><b>03</b><strong>Generate once</strong><small>Turnstile, rate limits, and budgets gate the server call.</small></div>
       <div class="step"><b>04</b><strong>Ask a specialist</strong><small>Kanabco confirms whether it can be made and quoted.</small></div>
     </div>
-    <p class="notice"><strong>Illustrative demo only.</strong> Both images are fictional assets generated for this handoff. This static page makes no API calls, does not use visitor photos, and does not show an existing Kanabco kitchen product. It does not verify measurements, utilities, materials, price, or whether Kanabco can manufacture the design.</p>
+    <section class="card paid-result" aria-label="Paid OpenAI image edit test result">
+      <img src="paid-kitchen-concept.jpg" alt="Real OpenAI API test result showing a conceptual kitchen design in the fictional room">
+      <div>
+        <p class="eyebrow">One real API test</p>
+        <h2>Generated from this fictional room</h2>
+        <p>This separate concept came from one Images Edit request during local testing. It shows the actual provider output; the interactive comparison above remains a curated presentation sample. The model changed the window size and some room geometry, so this result still needs fidelity review.</p>
+        <p class="fine">Concept only · Not a Kanabco product or confirmed quote</p>
+      </div>
+    </section>
+    <p class="notice"><strong>Illustrative demo only.</strong> All room images are fictional assets generated for this handoff. This static page makes no API calls, does not use visitor photos, and does not show an existing Kanabco kitchen product. It does not verify measurements, utilities, materials, price, or whether Kanabco can manufacture the design.</p>
   </main>
   <script>
     const control = document.getElementById("reveal");

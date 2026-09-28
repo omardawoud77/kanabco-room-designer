@@ -1,4 +1,6 @@
 import type { ServerConfig } from "./config";
+import sharp from "sharp";
+import { roomImageOutputSize } from "./image-output-size";
 
 export type ImageUsage = {
   input_tokens?: number;
@@ -66,6 +68,13 @@ export async function editRoomImage(options: {
   safetyUserHash: string;
 }): Promise<{ image: Buffer; usage: ImageUsage | null }> {
   const { config, room, productReference, prompt, safetyUserHash } = options;
+  let size: string;
+  try {
+    const metadata = await sharp(room, { limitInputPixels: 12_000_000, failOn: "error" }).metadata();
+    size = roomImageOutputSize(metadata.width ?? 0, metadata.height ?? 0);
+  } catch {
+    throw new OpenAiUnavailableError();
+  }
   const form = new FormData();
   form.set("model", config.model);
   form.append("image[]", new Blob([new Uint8Array(room)], { type: "image/jpeg" }), "room.jpg");
@@ -73,7 +82,7 @@ export async function editRoomImage(options: {
   form.set("prompt", prompt);
   form.set("n", "1");
   form.set("quality", "low");
-  form.set("size", "1024x1024");
+  form.set("size", size);
   form.set("output_format", "jpeg");
   form.set("output_compression", "80");
   form.set("user", safetyUserHash);

@@ -1,6 +1,6 @@
 # Kanabco Room Designer — developer handoff
 
-**Status:** Standalone Next.js App Router implementation for the development team to integrate. It has not been deployed or connected to Kanabco's live chatbot, price database, Cloudflare account, Redis account, or OpenAI project. Keep `AI_FEATURE_ENABLED=false` until the launch checks below pass. Start with the [forwardable team message](SEND-TO-DEVS.md), then use the [integration brief](HANDOFF.md) for product decisions.
+**Status:** Standalone Next.js App Router implementation for the development team to integrate. One local OpenAI image edit has passed against the dedicated Kanabco project. It has not been deployed or connected to Kanabco's live chatbot, price database, Cloudflare account, or Upstash account. Keep `AI_FEATURE_ENABLED=false` until the launch checks below pass. Start with the [forwardable team message](SEND-TO-DEVS.md), then use the [integration brief](HANDOFF.md) for product decisions.
 
 The visitor uploads one room photo and chooses a concept category: sofa, bed and headboard, wardrobe, dresser, dressing room, or kitchen. They select a style, color, and material direction, complete Turnstile, and receive one AI-generated concept image. A sofa project may optionally use one of two local Kanabco sofa references. Every other category is a **custom-project idea**, even if Kanabco does not currently sell or make it. The generated image is an illustration, not a quote, measured plan, existing product, or promise that Kanabco can manufacture or install it. The team must verify the two sofa references before launch. All generated projects have `priceEgp: null`; a specialist must confirm feasibility and give any quote.
 
@@ -37,12 +37,12 @@ The browser never calls OpenAI or receives the API key. The sole paid image requ
 | `tests/gateway.test.ts` | Rejects unsafe AI Gateway URLs and checks separation of OpenAI and Cloudflare credentials. |
 | `tests/redis-guards.integration.test.ts` | Runs the production Lua guards against an isolated real Redis 7 container. |
 | `.github/workflows/ci.yml` | Typecheck, tests, isolated Redis guard integration, and production build on GitHub pushes and pull requests. |
-| `demo/index.html`, `demo/*.png` | Offline fictional kitchen before/after comparison for product and engineering review. No API calls or credentials. |
+| `demo/index.html`, `demo/*.png`, `demo/paid-kitchen-concept.jpg` | Offline fictional comparison plus one actual API test image for review. The demo page makes no API calls and contains no credentials. |
 | `scripts/paid-smoke.ts` | Explicit one-attempt provider smoke test using the fictional kitchen photo. It does not exercise the public API guards. |
 
 ### Offline visual demo
 
-Open `demo/index.html` in a browser and drag the comparison control. It uses two fictional images created with the built-in imagegen tool and does not call this application, OpenAI, Turnstile, or Redis. It illustrates the concept experience; it does **not** prove the live model's output quality, Kanabco's manufacturing ability, or a price. `demo/README.md` records the image-generation prompts. The real protected flow remains behind `/api/room-design`.
+Open `demo/index.html` in a browser and drag the comparison control. The comparison uses two fictional images created with the built-in imagegen tool; a separate panel shows the one real API smoke result from the same fictional room. The static page does not call this application, OpenAI, Turnstile, or Redis. It illustrates the concept experience and one provider output; it does **not** prove consistent model quality, Kanabco's manufacturing ability, or a price. `demo/README.md` records the presentation-image prompts. The real protected flow remains behind `/api/room-design`.
 
 ### Product behavior and API shape
 
@@ -86,15 +86,21 @@ KANABCO_REDIS_TEST_CONTAINER=kanabco-redis-test node --import tsx --test tests/r
 docker rm -f kanabco-redis-test
 ```
 
-### One paid provider smoke test
+### One paid provider smoke test — completed locally
 
-After the owner creates a dedicated OpenAI Project, enables its affordable **hard** spend limit, and places its project key in the gitignored `.env.local` as `OPENAI_API_KEY`, run this command from the package directory **once**:
+On 28 September 2026, the owner bought $10 in organization-level prepaid API credits, turned auto-reload off, and set an enforced $50 monthly spend limit on the dedicated Kanabco project. Alerts are set at 50% ($25), 80% ($40), 95% ($47.50), plus the default 100% ($50). A restricted, user-owned project key named **Kanabco Website Server** permits only Images Request and Moderations Request. It has no expiry and is stored only in the gitignored, mode-600 `.env.local`; do not copy it into the handoff or send it to the team. Project IP allowlisting awaits the deployment server's known egress IP.
+
+The test used `gpt-image-2.5-flare-2026-09-08` and the fictional kitchen photo. It saved `work/local-test/paid-kitchen-concept.jpg` locally; a copy at `demo/paid-kitchen-concept.jpg` is included for team review. This is an actual API smoke result, distinct from the offline presentation image `demo/kitchen-after.png`. The paid output made the window smaller and changed parts of the room geometry, so it proves provider connectivity but **does not pass photo-fidelity acceptance**. The response reported 1,452 image input tokens, 238 text input tokens, and 196 output tokens. The server-side estimated provider cost was **about $0.02**. The first attempt stopped before any provider call because sandbox DNS was blocked. Its one-shot lock was cleared only after confirming no image edit occurred; a second call outside that sandbox succeeded exactly once.
+
+After that paid test, the server request was changed to choose an approximately 1 MP output size that follows the normalized room photo's aspect ratio, and the prompt now explicitly protects the full frame and exact window, door, wall, and fixture geometry. Inputs outside the provider's 1:3–3:1 aspect range are rejected before the paid call. [OpenAI documents custom image sizes](https://developers.openai.com/api/docs/guides/image-generation) for GPT Image 2.5, but **this revised request has not had a paid provider test**. Staging must confirm the provider accepts the chosen dimensions and that real edits preserve architecture before launch; the earlier square-image smoke result cannot establish either.
+
+For a separately authorized future smoke test with a separate test project and hard limit, this is the one-attempt command:
 
 ```sh
 PAID_SMOKE_CONFIRM=one-generation node --import tsx scripts/paid-smoke.ts
 ```
 
-The script moderates the fictional `demo/kitchen-before.png`, then makes at most one Images Edit call with fixed kitchen settings. It prints only usage and an approximate cost, and saves the normalized result to the gitignored `work/local-test/paid-kitchen-concept.jpg`. A one-shot lock prevents an accidental repeat; if it stops after the edit begins, check OpenAI project usage before deciding whether to retry. This direct provider test does **not** prove Turnstile, Cloudflare, Redis, the browser upload, or the public route are configured; those remain staging integration checks. Keep `AI_FEATURE_ENABLED=false` for the public route throughout this smoke test.
+The script moderates the fictional `demo/kitchen-before.png`, then makes at most one Images Edit call with fixed kitchen settings. It prints only usage and an approximate cost, and saves the normalized result to the gitignored path above. A one-shot lock prevents an accidental repeat; if it stops after the edit begins, check OpenAI project usage before deciding whether to retry. The completed direct provider test does **not** prove Turnstile, Cloudflare, Redis, the browser upload, or the public route are configured; those remain staging integration checks. `AI_FEATURE_ENABLED=false` remains in place for the public route.
 
 ## Environment variables
 
@@ -125,20 +131,18 @@ Copy `.env.example` and use exact values for the deployment. Every credential fi
 | `ALERT_SPEND_USD_PER_10MIN` | `2.00`; logs `SPEND_SPIKE` when estimated spend across ten one-minute buckets crosses this amount. Connect a real alert sink. |
 | `LOG_PROMPTS` | `false`; only the server-built prompt can be logged if explicitly set true. Customer images are never logged. |
 
-The earlier **text chatbot** variables such as `OPENAI_MODEL`, `OPENAI_MAX_TOKENS`, and `AI_TOKENS_PER_DAY_PER_IP` belong to its separate text endpoint. This image endpoint uses a fixed output image size/quality and dollar reservations instead of a text `max_tokens` parameter. Apply the text controls to the existing chatbot when its repository is available.
+The earlier **text chatbot** variables such as `OPENAI_MODEL`, `OPENAI_MAX_TOKENS`, and `AI_TOKENS_PER_DAY_PER_IP` belong to its separate text endpoint. This image endpoint uses a server-selected aspect-matched output size, fixed quality, and dollar reservations instead of a text `max_tokens` parameter. Apply the text controls to the existing chatbot when its repository is available.
 
-## OpenAI dashboard: human setup
+## OpenAI dashboard status and remaining setup
 
-The developer or owner must perform these actions in the dashboard; this package cannot set them:
+The owner completed the dedicated project, server-only restricted key, $50 enforced monthly hard limit, spend alerts, $10 prepaid purchase, and auto-reload-off setting. The development team must preserve those controls in production and finish the remaining dashboard and deployment work:
 
-1. Create a dedicated OpenAI Project for the public Room Designer and a project API key. Put the key only in server secrets as `OPENAI_API_KEY`.
-2. Set a monthly project spend amount you can afford to lose, enable **Enforce a hard limit**, and set alerts at 50%, 80%, and 95%.
-3. Use prepaid credits; keep auto-recharge **off** while anonymous access is public.
-4. Allowlist only the server's fixed egress IPs for this key. Arrange static egress (for example, a controlled NAT) before enabling the route; dynamic serverless egress cannot satisfy this control. Leave AI Gateway disabled unless its outbound path can also satisfy the project's IP allowlist; moderation still calls OpenAI directly from the server.
-5. Check the selected image snapshot is enabled for that project and complete organization verification if OpenAI requires it.
-6. Revoke and rotate the key immediately if it appears in a repository, client bundle, browser network response, or log. Never commit `.env.local`.
+1. Arrange a fixed deployment egress IP, then allowlist only the server's egress IPs for this key. Dynamic serverless egress cannot satisfy this control. Leave AI Gateway disabled unless its outbound path can also satisfy the project's IP allowlist; moderation still calls OpenAI directly from the server.
+2. Transfer project access through the organization's access controls, or create a deployment secret directly in the hosting platform. Do not share the long-lived key through GitHub, chat, the handoff ZIP, or the frontend.
+3. Keep the $50 hard limit and 50%/80%/95% alerts under review; change the amount only with the owner's decision. Keep prepaid auto-reload off while anonymous access is public.
+4. Revoke and rotate the key immediately if it appears in a repository, client bundle, browser network response, or log. Never commit `.env.local`.
 
-The OpenAI project limit is the final bill backstop, but [OpenAI states enforcement can lag slightly](https://developers.openai.com/api/docs/guides/spend-limits). No application reservation can guarantee an exact maximum charge for a call whose image-token total is unknown until it finishes. Start with a small project hard limit and raise it only after real usage is measured.
+The OpenAI project limit is the final bill backstop, but [OpenAI states enforcement can lag slightly](https://developers.openai.com/api/docs/guides/spend-limits); prepaid depletion can also overshoot. The configured $50 is therefore **not an exact maximum possible charge**. No application reservation can guarantee an exact maximum charge for a call whose image-token total is unknown until it finishes. Raise the project hard limit only with the owner's decision after real usage is measured.
 
 In staging, inspect the actual Images Edit response with a test project before public traffic. Confirm that `usage.input_tokens_details.image_tokens`, `usage.input_tokens_details.text_tokens`, and `usage.output_tokens` are present as nonnegative integers for both a room-only concept and a sofa-reference concept. The code emits `USAGE_UNKNOWN_DAILY_BREAKER` and refuses further image calls until the next UTC day when any field is missing. Resolve provider-response differences and recalibrate `AI_IMAGE_RESERVED_USD` before launch.
 
