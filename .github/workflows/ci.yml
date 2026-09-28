@@ -1,0 +1,37 @@
+name: Verify handoff
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - name: Start isolated Redis for Lua guard tests
+        run: |
+          docker run -d --name kanabco-redis-test redis:7-alpine redis-server --save '' --appendonly no
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            if docker exec kanabco-redis-test redis-cli ping | grep -q PONG; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+      - name: Test atomic Redis guards
+        env:
+          KANABCO_REDIS_TEST_CONTAINER: kanabco-redis-test
+        run: node --import tsx --test tests/redis-guards.integration.test.ts
+      - name: Stop isolated Redis
+        if: always()
+        run: docker rm -f kanabco-redis-test || true
+      - run: npm run build

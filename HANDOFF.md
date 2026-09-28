@@ -1,0 +1,40 @@
+# Kanabco Room Designer — integration brief
+
+Share [SEND-TO-DEVS.md](SEND-TO-DEVS.md) with the package. This brief records product scope and launch acceptance; `README.md` contains the API gates, environment variables, dashboard steps, and abuse tests.
+
+## Product decision for v1
+
+Add the Room Designer as a separate customization feature beside the existing quote advisor. A visitor uploads one photo of their space and chooses **sofa, bed and headboard, wardrobe, dresser, dressing room, or kitchen**. They set a style, color, and material direction, then receive one AI-generated visual concept.
+
+These are **six idea categories**, not six listings in Kanabco's catalog. Current confirmed made-to-order policy covers sofas/chairs; it does not establish that Kanabco sells or can produce the other categories. Show beds, wardrobes, dressers, dressing rooms, and kitchens as exploratory custom-project ideas. A specialist must first assess whether Kanabco can deliver the request, then confirm survey, materials, scope, timeline, and quote. Kitchen concepts require separate technical review for utilities, ventilation, structure, and installation. Never present the image as a measured design or an order specification.
+
+The sofa category supports a new concept from controlled style/material choices or an optional reference to one of two example Kanabco sofas. All other categories use only the visitor's room photo and controlled server prompts; they need no existing SKU. Both sofa references need product-media verification before launch. No generated project shows an automatic price. The existing chatbot is unchanged because its source was not available.
+
+The supplied screenshot is visual direction for the experience. Its category names and suggested prices do not establish a live catalog or approved production offer.
+
+## Developer integration sequence
+
+1. Merge this isolated Next.js package into the live site as a route or subdomain, preserving the backend code and server-only secrets. If the live site is not Next.js, port the same checks and Redis scripts into its backend; retain the strict multipart field allowlist and exact gate order in `README.md`.
+2. Keep `src/lib/custom-projects.ts` as the explicit allowlist of the six idea categories and material combinations. Confirm UI and API use the same enums. `productId` is optional **only for a sofa**; any product ID on a bed, wardrobe, dresser, dressing room, or kitchen request must be rejected.
+3. Verify `src/lib/catalog.ts` and `public/products/` against approved sofa media. Connect a catalog or price source only for approved products; do not invent SKUs or prices for custom-project ideas. Every generated result currently returns `project.priceEgp: null` and tells the visitor to consult a specialist.
+4. Match Kanabco's header, footer, approved logo, typography, and advisor entry point. Keep the category-wide concept disclaimer, before/after labels, and acceptable-use note visible. Style, color, and material choices are visual preferences, not promises about available finishes.
+5. Decide how a customer may bring the result to an advisor. The package lets them download the concept and open Kanabco's website; they must find a contact option and share the image manually. There is **no automatic lead attachment**, server photo storage, or advisor message. A future automatic handoff requires explicit consent, access controls, encrypted private storage, short retention/deletion rules, and an advisor view.
+6. Set up Cloudflare, Upstash, a dedicated OpenAI project/key, static egress, and IP allowlisting per `README.md`. Keep `AI_FEATURE_ENABLED=false` until staging abuse checks and category acceptance checks pass.
+7. Review the source in the private `omardawoud77/kanabco-room-designer` repository. GitHub Actions runs typecheck, unit tests, real Redis Lua guard tests, and build. Integrate this package into the actual live site repository after confirming its stack and owners.
+
+## Launch acceptance
+
+- All six categories can generate a concept from an appropriate room photo. The result labels each as a project idea and shows the specialist feasibility/quote note. None of the five concept-only categories appears as an existing Kanabco product or confirmed service.
+- A sofa can be generated with no reference or with one verified catalog reference. Only the latter response carries product metadata. A non-sofa request with `productId` fails before an image edit.
+- The live browser sends only `{ image, projectType, productId?, style, color, material, roomWidthCm?, turnstileToken }` to Kanabco's backend. No OpenAI request or secret appears in the client bundle.
+- A room photo with visible people or private information is discouraged. The app does not persist the upload or generated image or log them by default.
+- The generated result is visibly illustrative. A kitchen preview does not claim utility, code, structure, installation, or fit verification. Materials and colors remain visual directions.
+- Wrong origin, direct-origin bypass, Turnstile replay, oversize image, quota exhaustion, Redis failure, and kill switch tests all block paid image edits.
+- Staging Images Edit responses include nonnegative integer `usage.input_tokens_details.image_tokens`, `usage.input_tokens_details.text_tokens`, and `usage.output_tokens` with and without a sofa reference. Missing fields trigger the daily breaker; resolve that before public use.
+- Automated photo moderation blocks flagged supported categories but is not exhaustive image screening. Keep photo privacy guidance and specialist review.
+- A specialist can review feasibility and provide any quote using the authoritative catalog and production team. The AI never invents a price or accepts an order.
+- The owner has set and verified the OpenAI project hard limit, alerts, prepaid/no auto-recharge, key IP allowlist, WAF rule, and log alerts.
+
+## What the team receives
+
+Standalone source, lockfile, two optional sofa reference images, an offline fictional kitchen before/after demo in `demo/index.html`, the environment template, security-focused tests, and the detailed security/setup runbook in `README.md`. No credentials or paid API output are included. Local typecheck, tests, and production build are the verification gate; live provider, Cloudflare, and catalog integration require the team's staging environment. This is a handoff package, not a live deployment.
