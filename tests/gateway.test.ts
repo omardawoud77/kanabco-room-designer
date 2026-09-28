@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import sharp from "sharp";
 import { ConfigurationError, serverConfig } from "../src/lib/config";
 import { editRoomImage, moderateRoomImage } from "../src/lib/openai-image";
 
@@ -29,9 +30,10 @@ function imageResponse(): Response {
 }
 
 async function callEdit(): Promise<void> {
+  const room = await sharp({ create: { width: 1200, height: 900, channels: 3, background: "#d9d0c6" } }).jpeg().toBuffer();
   await editRoomImage({
     config: serverConfig(),
-    room: Buffer.from([0xff, 0xd8, 0xff, 0xd9]),
+    room,
     prompt: "Test room design",
     safetyUserHash: "a".repeat(64),
   });
@@ -75,6 +77,7 @@ test("image edit uses the gateway path and separate Cloudflare authorization", a
     assert.equal(headers.get("authorization"), "Bearer test-key-not-real");
     assert.equal(headers.get("cf-aig-authorization"), "Bearer test-cloudflare-token-not-real");
     assert.ok(init?.body instanceof FormData);
+    assert.equal((init?.body as FormData).get("size"), "1152x864");
     return imageResponse();
   };
   try {
