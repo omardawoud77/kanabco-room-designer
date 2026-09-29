@@ -98,6 +98,25 @@ test("public image model and minimum cost reservation are fixed server-side", ()
   delete process.env.AI_IMAGE_RESERVED_USD;
 });
 
+test("request and image limits cannot exceed the hosted payload ceiling", () => {
+  configure();
+  const priorBody = process.env.AI_MAX_BODY_BYTES;
+  const priorImage = process.env.AI_MAX_IMAGE_BYTES;
+  try {
+    process.env.AI_MAX_BODY_BYTES = "4000001";
+    assert.throws(() => serverConfig(), ConfigurationError);
+    process.env.AI_MAX_BODY_BYTES = "4000000";
+    process.env.AI_MAX_IMAGE_BYTES = "3500001";
+    assert.throws(() => serverConfig(), ConfigurationError);
+    process.env.AI_MAX_IMAGE_BYTES = "3500000";
+    process.env.AI_MAX_BODY_BYTES = "3501000";
+    assert.throws(() => serverConfig(), ConfigurationError);
+  } finally {
+    if (priorBody === undefined) delete process.env.AI_MAX_BODY_BYTES; else process.env.AI_MAX_BODY_BYTES = priorBody;
+    if (priorImage === undefined) delete process.env.AI_MAX_IMAGE_BYTES; else process.env.AI_MAX_IMAGE_BYTES = priorImage;
+  }
+});
+
 test("enabled production service requires an HTTPS photo-processing notice", () => {
   configure();
   const priorNodeEnv = process.env.NODE_ENV;

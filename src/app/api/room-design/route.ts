@@ -12,6 +12,7 @@ import { clientIp, maskedIp, privateIpHash, readSession, sha256 } from "@/lib/id
 import { InvalidImageError, normalizeGeneratedImage, normalizeUploadedImage } from "@/lib/images";
 import { billableUsageKnown, editRoomImage, estimatedCostCents, moderateRoomImage, OpenAiUnavailableError, type ImageUsage } from "@/lib/openai-image";
 import { buildRoomPrompt } from "@/lib/prompt";
+import { MAX_RESULT_JSON_BYTES } from "@/lib/payload-limits";
 import { acquireRepeatLock, acquireSlots, cancelReservation, consumeTurnstileToken, GuardUnavailableError, releaseRepeatLock, releaseSlots, reserveRequest, settleRequest } from "@/lib/redis-guards";
 import { verifyTurnstile } from "@/lib/turnstile";
 
@@ -197,9 +198,7 @@ export async function POST(request: NextRequest) {
     const safeImage = await normalizeGeneratedImage(edit.image);
 
     // 13. Return pixels and plain strings only; the UI never renders model HTML.
-    outcome = "success";
-    reason = "ok";
-    return apiResponse({
+    const responseBody = {
       requestId,
       imageDataUrl: `data:image/jpeg;base64,${safeImage.toString("base64")}`,
       project: {
@@ -213,7 +212,14 @@ export async function POST(request: NextRequest) {
         priceNote: "A Kanabco specialist must confirm whether this concept can be made and provide a final quote.",
       },
       conceptDisclaimer: "AI design concept only. Beds, kitchens and other custom concepts are not listed Kanabco products or confirmed services. A specialist must verify feasibility, measurements, materials, availability and final price before any order.",
-    }, 200, config);
+    };
+    if (Buffer.byteLength(JSON.stringify(responseBody)) > MAX_RESULT_JSON_BYTES) {
+      reason = "result_too_large";
+      return apiError(503, config);
+    }
+    outcome = "success";
+    reason = "ok";
+    return apiResponse(responseBody, 200, config);
   } catch (error) {
     outcome = "error";
     reason = error instanceof ConfigurationError ? "configuration" :

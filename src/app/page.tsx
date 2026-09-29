@@ -3,6 +3,7 @@
 import { ChangeEvent, DragEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { Turnstile } from "@/components/Turnstile";
 import { ALLOWED_MATERIALS, type ConceptColor, type ConceptMaterial as Material, type ProjectType } from "@/lib/custom-projects";
+import { MAX_UPLOAD_IMAGE_BYTES } from "@/lib/payload-limits";
 
 type CatalogProduct = {
   id: string;
@@ -76,7 +77,7 @@ const COLORS: { id: ConceptColor; name: string }[] = [
   { id: "charcoal", name: "Charcoal" },
 ];
 
-const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const MAX_SELECTED_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_IMAGE_PIXELS = 12_000_000;
 const ACCEPTED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const WAIT_LIMIT_MS = 250_000;
@@ -96,12 +97,37 @@ function safeProductUrl(value: string | null) {
 }
 
 function responseError(status: number) {
-  if (status === 413) return "This photo is too large. Choose an image under 8 MB.";
+  if (status === 413) return "This photo could not fit the upload limit. Try a smaller JPG under 3.5 MB.";
   if (status === 429) return "The design studio is busy or your free limit has been reached. Please try again later.";
   if (status === 503) return "The design studio is temporarily unavailable. Please try again later.";
   if (status === 400) return "Please check your photo and selections. If the photo keeps failing, export it as a clear JPG, PNG, or WebP and try again.";
   if (status === 403) return "We could not verify this request. Complete the security check again and retry.";
   return "Your design could not be created right now. Please try again later.";
+}
+
+async function prepareLargePhoto(bitmap: ImageBitmap, fileName: string): Promise<{ file: File; width: number; height: number } | null> {
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+  if (!context) return null;
+  for (const maxDimension of [1536, 1024]) {
+    const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    for (const quality of [0.82, 0.65]) {
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+      if (blob && blob.size >= 1000 && blob.size <= MAX_UPLOAD_IMAGE_BYTES) {
+        return {
+          file: new File([blob], fileName.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" }),
+          width: canvas.width,
+          height: canvas.height,
+        };
+      }
+    }
+  }
+  return null;
 }
 
 function isDesignResult(value: unknown): value is DesignResult {
@@ -287,7 +313,7 @@ export default function Home() {
         : "Choose a JPG, PNG, or WebP photo.");
       return;
     }
-    if (file.size > MAX_IMAGE_BYTES) {
+    if (file.size > MAX_SELECTED_IMAGE_BYTES) {
       setPhotoError("Choose a photo smaller than 8 MB.");
       return;
     }
@@ -297,24 +323,35 @@ export default function Home() {
     }
     try {
       const bitmap = await createImageBitmap(file);
-      const { width, height } = bitmap;
-      bitmap.close();
-      if (selectionId !== photoSelectionId.current) return;
-      if (width < 320 || height < 320) {
-        setPhotoError("This photo is too small. Choose one at least 320 × 320 pixels.");
-        return;
+      try {
+        const { width, height } = bitmap;
+        if (selectionId !== photoSelectionId.current) return;
+        if (width < 320 || height < 320) {
+          setPhotoError("This photo is too small. Choose one at least 320 × 320 pixels.");
+          return;
+        }
+        if (width * height > MAX_IMAGE_PIXELS) {
+          setPhotoError("This photo has too many pixels. Choose one under 12 megapixels.");
+          return;
+        }
+        if (Math.max(width, height) > 3 * Math.min(width, height)) {
+          setPhotoError("Choose a room photo that is less panoramic.");
+          return;
+        }
+        const prepared = file.size > MAX_UPLOAD_IMAGE_BYTES
+          ? await prepareLargePhoto(bitmap, file.name)
+          : { file, width, height };
+        if (selectionId !== photoSelectionId.current) return;
+        if (!prepared) {
+          setPhotoError("This photo could not be prepared for upload. Save it as a smaller JPG and try again.");
+          return;
+        }
+        setPhotoError("");
+        setPhotoDimensions({ width: prepared.width, height: prepared.height });
+        setPhoto(prepared.file);
+      } finally {
+        bitmap.close();
       }
-      if (width * height > MAX_IMAGE_PIXELS) {
-        setPhotoError("This photo has too many pixels. Choose one under 12 megapixels.");
-        return;
-      }
-      if (Math.max(width, height) > 3 * Math.min(width, height)) {
-        setPhotoError("Choose a room photo that is less panoramic.");
-        return;
-      }
-      setPhotoError("");
-      setPhotoDimensions({ width, height });
-      setPhoto(file);
     } catch {
       if (selectionId === photoSelectionId.current) {
         setPhotoError("This photo could not be read. Choose a clear JPG, PNG, or WebP photo.");

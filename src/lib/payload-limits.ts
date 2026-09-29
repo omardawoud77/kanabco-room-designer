@@ -1,0 +1,4 @@
+export const MAX_REQUEST_BODY_BYTES = 4_000_000;
+export const MAX_UPLOAD_IMAGE_BYTES = 3_500_000;
+export const MAX_RESULT_IMAGE_BYTES = 2_700_000;
+export const MAX_RESULT_JSON_BYTES = 4_000_000;

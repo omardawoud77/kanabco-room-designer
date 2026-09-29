@@ -1,3 +1,5 @@
+import { MAX_REQUEST_BODY_BYTES, MAX_UPLOAD_IMAGE_BYTES } from "./payload-limits";
+
 export class ConfigurationError extends Error {
   constructor() {
     super("Service configuration is incomplete");
@@ -77,6 +79,9 @@ export function serverConfig() {
   const gateway = gatewayBaseUrl();
   const cfAigToken = process.env.CF_AIG_TOKEN?.trim() || null;
   if (cfAigToken && (cfAigToken.length > 1024 || /[\r\n]/.test(cfAigToken))) throw new ConfigurationError();
+  const maxBodyBytes = boundedInteger("AI_MAX_BODY_BYTES", MAX_REQUEST_BODY_BYTES, 1024, MAX_REQUEST_BODY_BYTES);
+  const maxImageBytes = boundedInteger("AI_MAX_IMAGE_BYTES", MAX_UPLOAD_IMAGE_BYTES, 1024, MAX_UPLOAD_IMAGE_BYTES);
+  if (maxBodyBytes < maxImageBytes + 4096) throw new ConfigurationError();
   return {
     allowedOrigin,
     photoPrivacyUrl: photoPrivacyUrl(),
@@ -92,8 +97,8 @@ export function serverConfig() {
     model,
     openAiTimeoutMs: boundedInteger("OPENAI_IMAGE_TIMEOUT_MS", 150000, 30000, 180000),
     imageReserveCents: dollarCents("AI_IMAGE_RESERVED_USD", "1.00", 100, 10000),
-    maxBodyBytes: boundedInteger("AI_MAX_BODY_BYTES", 8519680, 1024, 12000000),
-    maxImageBytes: boundedInteger("AI_MAX_IMAGE_BYTES", 8388608, 1024, 10000000),
+    maxBodyBytes,
+    maxImageBytes,
     maxImagePixels: boundedInteger("AI_MAX_IMAGE_PIXELS", 12000000, 1000000, 40000000),
     ipPerMinute: boundedInteger("AI_REQ_PER_MIN_PER_IP", 2, 1, 100),
     ipPerDay: boundedInteger("AI_REQ_PER_DAY_PER_IP", 10, 1, 10000),

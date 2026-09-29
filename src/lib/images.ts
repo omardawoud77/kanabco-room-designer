@@ -1,5 +1,6 @@
 import sharp from "sharp";
 import { roomImageOutputSize } from "./image-output-size";
+import { MAX_RESULT_IMAGE_BYTES } from "./payload-limits";
 
 export class InvalidImageError extends Error {}
 
@@ -31,7 +32,20 @@ export async function normalizeGeneratedImage(bytes: Buffer): Promise<Buffer> {
     const decoder = sharp(bytes, { limitInputPixels: 8_300_000, failOn: "error" });
     const metadata = await decoder.metadata();
     if (!metadata.width || !metadata.height || metadata.width < 512 || metadata.height < 512) throw new InvalidImageError();
-    return await decoder.flatten({ background: "#ffffff" }).jpeg({ quality: 85, mozjpeg: true }).toBuffer();
+    for (const { maxDimension, quality } of [
+      { maxDimension: 1536, quality: 85 },
+      { maxDimension: 1536, quality: 70 },
+      { maxDimension: 1024, quality: 70 },
+      { maxDimension: 768, quality: 60 },
+    ]) {
+      const encoded = await decoder.clone()
+        .resize(maxDimension, maxDimension, { fit: "inside", withoutEnlargement: true })
+        .flatten({ background: "#ffffff" })
+        .jpeg({ quality, mozjpeg: true })
+        .toBuffer();
+      if (encoded.length <= MAX_RESULT_IMAGE_BYTES) return encoded;
+    }
+    throw new InvalidImageError();
   } catch {
     throw new InvalidImageError();
   }
