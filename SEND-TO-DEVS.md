@@ -10,7 +10,7 @@ Copy the message below into your handoff. Attach this package and ask the team t
 >
 > Please connect the feature to our approved website route and advisor entry point, verify the two sofa reference images, and preserve the matched Kanabco branding. Keep the server-side OpenAI call and all abuse controls. Keep `AI_FEATURE_ENABLED=false` in public deployment until the staging and security checks below pass. Send us the staging URL, test evidence, expected cost per generation, and the remaining product decisions before public launch.
 
-The source is in the **private** GitHub repository `omardawoud77/kanabco-room-designer`. This is a handoff location, not the live Kanabco site. Grant the development team access and integrate the package into the actual site repository after confirming its stack.
+The source is in the GitHub repository `omardawoud77/kanabco-room-designer`. This is a handoff location, not the live Kanabco site. The development team should keep access through its own GitHub accounts and integrate the package into the actual site repository after confirming its stack.
 
 **Deployment status at handoff:** The Room Designer is not deployed. The connected Vercel account has no Room Designer project, the example `custom.kanabco.net` hostname has no DNS record, and a Cloudflare proxy/WAF was not observed on the live site at the 29 September 2026 audit. The live site source repository and integration owner are still unconfirmed. Choose the approved hosting and route before configuring production secrets or enabling the AI endpoint.
 
